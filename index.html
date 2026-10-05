@@ -70,12 +70,19 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
   touch-action:none;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
 #menu-btn.vis{display:flex;}
 #menu-btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.25);}
+#night-btn{position:fixed;left:calc(22px + env(safe-area-inset-left,0px));bottom:calc(30px + env(safe-area-inset-bottom,0px));
+  width:72px;height:72px;border-radius:50%;font-size:36px;border:none;background:var(--panel);color:var(--panel-ink);
+  box-shadow:0 4px 0 rgba(0,0,0,.25);cursor:pointer;display:none;align-items:center;justify-content:center;
+  touch-action:none;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+#night-btn.vis{display:flex;}
+#night-btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.25);}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="eggs" aria-label="Eggs found"></div>
 <button id="menu-btn" aria-label="Menu">🏠</button>
+<button id="night-btn" aria-label="Toggle night">🌙</button>
 
 <div id="overlay">
   <div class="card">
@@ -209,7 +216,13 @@ buildGround();
 
 // ---------- dino ----------
 const dino = {type:'dino', x:START.x, y:START.y, dir:1, walk:0, moving:false, roar:0, blink:0, s:1, celebrate:0};
+const playerBaby = {type:'dino', x:START.x-70, y:START.y+20, dir:1, walk:0, moving:false, roar:0, blink:0, s:.52};
+const starPositions = Array.from({length:120},()=>[Math.random(),Math.random(),.8+Math.random()*1.8,Math.random()*7]);
+let nightMode = false;
 const SPEED = 200;
+const STEP_PITCH = {rex:1,trike:.9,steg:.85,brachi:.55,unicorn:1.3,para:1,anky:.75,ptero:1.7};
+let stepCooldown = 0;
+const vibrate = p => { try{navigator.vibrate(p);}catch(e){} };
 const SKINS = {
   blue:   {G:'#3d8bfd', DG:'#2563c9', BEL:'#c4e2ff', SP:'#ffd23f'},
   purple: {G:'#9b5de5', DG:'#6c3bb0', BEL:'#e8d8ff', SP:'#ffd23f'},
@@ -282,11 +295,10 @@ function roarFX(a){
   return fx = {bus, noise};
 }
 function roar(){
-  dino.roar = 1;
+  dino.roar = 1; playerBaby.roar = .6; vibrate([40,20,40]);
   const a = audio(); if (!a) return;
   if (a.currentTime - lastRoar < .4) return; lastRoar = a.currentTime;
   playRoar(SPECIES[speciesName].pitch, 1);
-  // friends nearby roar back
   npcs.forEach(n => { if (n.cool <= 0 && Math.hypot(n.x-dino.x, n.y-dino.y) < 420){ n.cool = 2.5; n.reply = .5 + Math.random()*.6; } });
 }
 function playRoar(pitch, vol){
@@ -338,6 +350,13 @@ function munch(){
   [640,900].forEach((f,i)=>{ const t=a.currentTime+i*.04, o=a.createOscillator(), g=a.createGain();
     o.type='sine'; o.frequency.value=f; g.gain.setValueAtTime(.12,t); g.gain.exponentialRampToValueAtTime(.001,t+.07);
     o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+.09); });
+}
+function footstep(pitch=1){
+  const a=audio(); if(!a) return;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(85*pitch,a.currentTime); o.frequency.exponentialRampToValueAtTime(28*pitch,a.currentTime+.09);
+  g.gain.setValueAtTime(.13,a.currentTime); g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.11);
+  o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+.13);
 }
 function placeFoods(){
   foods.length=0;
@@ -688,14 +707,14 @@ const npcs = [];
     const x = 150+rnd()*(W-300), y = 150+rnd()*(H-300);
     if (blocked(x,y) || Math.hypot(x-START.x,y-START.y) < 350 || npcs.some(n => Math.hypot(n.x-x,n.y-y) < 450)) continue;
     const n = {type:'dino', npc:true, kind:kinds[(rnd()*kinds.length)|0], skin:skins[(rnd()*skins.length)|0], s:1,
-      x, y, home:{x,y}, dir:rnd()<.5?1:-1, walk:0, moving:false, roar:0, blink:0, cool:0, reply:0, wait:rnd()*3, goal:null, greeted:false};
+      x, y, home:{x,y}, dir:rnd()<.5?1:-1, walk:0, moving:false, roar:0, blink:0, cool:0, reply:0, wait:rnd()*3, goal:null, greeted:false, nameTimer:0};
     npcs.push(n);
     if (rnd() < .6) for (let b=0, nb=1+(rnd()<.4); b<nb; b++)
       npcs.push({...n, baby:true, parent:n, s:.55, x:x-50-b*35, y:y+25+b*15, home:null, goal:null, off:{x:-55-b*40, y:20+b*25}});
   }
 })();
 function npcRoar(n){
-  n.roar = 1; n.cool = Math.max(n.cool, 1.5);
+  n.roar = 1; n.cool = Math.max(n.cool, 1.5); n.nameTimer = 2.5;
   for (let k=0;k<3;k++) sparks.push({heart:true, x:n.x+(Math.random()-.5)*40, y:n.y-70*n.s-k*12, vx:(Math.random()-.5)*30, vy:-60, life:1.2});
   const vol = Math.max(.2, Math.min(.75, 1 - Math.hypot(n.x-dino.x,n.y-dino.y)/800));
   playRoar(SPECIES[n.kind].pitch * (n.baby ? 1.7 : 1), vol * (n.baby ? .7 : 1));
@@ -710,6 +729,7 @@ function stepToward(n, gx, gy, speed, dt){
 function updateNPC(n, dt){
   n.roar = Math.max(0, n.roar - dt*.75); n.cool -= dt;
   n.blink -= dt; if (n.blink < -3-Math.random()*4) n.blink = .12;
+  if(n.nameTimer>0) n.nameTimer-=dt;
   if (n.reply > 0){ n.reply -= dt; if (n.reply <= 0) npcRoar(n); }
   const dP = Math.hypot(dino.x-n.x, dino.y-n.y);
   let moved = false;
@@ -735,9 +755,11 @@ const eggLabel = document.getElementById('eggs');
 let found = 0, playing = false;
 const overlay = document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovText=document.getElementById('ovText'), ovBtn=document.getElementById('ovBtn'), menuBtn=document.getElementById('menu-btn');
 function drawSlots(){ eggLabel.innerHTML = Array.from({length:EGG_COUNT}, (_,i) => `<span class="${i<found?'got':''}">🥚</span>`).join(''); }
-function newGame(){ placeEggs(); placeFoods(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; }
-ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); playMapMusic(); });
-menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
+function newGame(){ placeEggs(); placeFoods(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; playerBaby.x=START.x-70; playerBaby.y=START.y+20; }
+const nightBtn = document.getElementById('night-btn');
+nightBtn.addEventListener('pointerdown', e => { e.preventDefault(); nightMode=!nightMode; nightBtn.textContent=nightMode?'☀️':'🌙'; });
+ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); nightBtn.classList.add('vis'); playMapMusic(); });
+menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); nightBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
 newGame();
 
 // ---------- loop ----------
@@ -765,27 +787,35 @@ function frame(now){
   }
   dino.roar = Math.max(0, dino.roar - dt*0.75);
   dino.blink -= dt; if (dino.blink < -3-Math.random()*3) dino.blink = .12;
+  if(dino.moving){ stepCooldown-=dt; if(stepCooldown<=0){ footstep(STEP_PITCH[speciesName]||1); stepCooldown=.28; } } else stepCooldown=0;
+  if(playing){ const btx=dino.x-dino.dir*65,bty=dino.y+20,bdx=btx-playerBaby.x,bdy=bty-playerBaby.y,bd=Math.hypot(bdx,bdy);
+    if(bd>18){ const ba=Math.atan2(bdy,bdx),bs=Math.min(bd,SPEED*.75*dt),bnx=playerBaby.x+Math.cos(ba)*bs,bny=playerBaby.y+Math.sin(ba)*bs;
+      if(!blocked(bnx,bny)){playerBaby.x=bnx;playerBaby.y=bny;} playerBaby.moving=true; playerBaby.walk+=dt*14;
+      if(Math.abs(Math.cos(ba))>.2) playerBaby.dir=Math.cos(ba)>0?1:-1; } else playerBaby.moving=false;
+    playerBaby.roar=Math.max(0,playerBaby.roar-dt*.75);
+    playerBaby.blink-=dt; if(playerBaby.blink<-3-Math.random()*4) playerBaby.blink=.12; }
   if(dino.celebrate>0){ dino.celebrate=Math.max(0,dino.celebrate-dt); if(Math.random()<.3) sparks.push({heart:true,x:dino.x+(Math.random()-.5)*55,y:dino.y-55*dino.s,vx:(Math.random()-.5)*45,vy:-75-Math.random()*40,life:1.1}); }
 
   // eggs
   for (let i=eggs.length-1;i>=0;i--){ const e=eggs[i];
     if (Math.hypot(e.x-dino.x, e.y-dino.y) < 50){
-      eggs.splice(i,1); found++; chime();
+      eggs.splice(i,1); found++; chime(); playerBaby.roar=1;
       dino.s = Math.min(1.6, dino.s + 0.06); dino.celebrate = 1.8;
       const _sk = Object.keys(SKINS); skinName = _sk[(_sk.indexOf(skinName)+1)%_sk.length];
       try { localStorage.setItem('dinoSkin', skinName); } catch(e){} drawSwatches(); drawPicker();
       for(let k=0;k<36;k++) sparks.push({x:e.x,y:e.y-18,vx:(Math.random()-.5)*400,vy:-80-Math.random()*320,life:1.3,c:e.c});
       for(let k=0;k<8;k++) sparks.push({heart:true,x:e.x+(Math.random()-.5)*30,y:e.y-30,vx:(Math.random()-.5)*50,vy:-90-Math.random()*50,life:1.6});
+      vibrate(!eggs.length?[200,100,200,100,300]:[80]);
       drawSlots(); eggLabel.classList.remove('pop'); void eggLabel.offsetWidth; eggLabel.classList.add('pop');
       if (!eggs.length){ target=null;
         for(let k=0;k<180;k++) sparks.push({x:dino.x+(Math.random()-.5)*60,y:dino.y-60,vx:(Math.random()-.5)*900,vy:-100-Math.random()*800,life:2.2,c:['#ff9ecb','#8fd3ff','#ffd56b','#c7a0ff','#ff6b6b','#6bffb0','#fff'][k%7]});
         for(let k=0;k<24;k++) sparks.push({heart:true,x:dino.x+(Math.random()-.5)*100,y:dino.y-50,vx:(Math.random()-.5)*120,vy:-120-Math.random()*120,life:2.5});
-        roar(); setTimeout(() => { ovTitle.textContent='Yay!'; ovText.textContent='🎉 🦖 🎉'; overlay.hidden=false; menuBtn.classList.remove('vis'); }, 1400); }
+        roar(); setTimeout(() => { ovTitle.textContent='Yay!'; ovText.textContent='🎉 🦖 🎉'; overlay.hidden=false; menuBtn.classList.remove('vis'); nightBtn.classList.remove('vis'); }, 1400); }
     } }
   // food eating
   foods.forEach(f => {
     if(f.eaten){ f.respawnIn-=dt; if(f.respawnIn<=0) f.eaten=false; return; }
-    if(Math.hypot(dino.x-f.x,dino.y-f.y)<42){ f.eaten=true; f.respawnIn=9+Math.random()*6; munch();
+    if(Math.hypot(dino.x-f.x,dino.y-f.y)<42){ f.eaten=true; f.respawnIn=9+Math.random()*6; munch(); vibrate([20]);
       for(let k=0;k<10;k++) sparks.push({x:f.x+(Math.random()-.5)*20,y:f.y-14,vx:(Math.random()-.5)*70,vy:-55-Math.random()*50,life:.8,c:['#ffff80','#ff80c0','#80ffff'][k%3]}); }
   });
   npcs.forEach(n => updateNPC(n, dt));
@@ -811,7 +841,7 @@ function frame(now){
 
   // depth-sorted objects in view
   const pad=140, vis = o => o.x>camX-pad && o.x<camX+vw+pad && o.y>camY-pad && o.y<camY+vh+pad*1.5;
-  const list = [...trees,...rocks,...bushes,...eggs,...foods,...npcs,...volcanoes,dino].filter(o => o.type==='volcano' ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
+  const list = [...trees,...rocks,...bushes,...eggs,...foods,...npcs,...volcanoes,playerBaby,dino].filter(o => o.type==='volcano' ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
   for (const o of list){
     if (o.type==='tree') drawTree(o); else if (o.type==='rock') drawRock(o);
     else if (o.type==='bush') drawBush(o); else if (o.type==='egg') drawEgg(o,t); else if (o.type==='food') drawFood(o,t); else if (o.type==='volcano') drawVolcano(o,t); else drawDino(o,t);
@@ -822,6 +852,11 @@ function frame(now){
   sparks.forEach(s => { ctx.globalAlpha=Math.min(1,s.life);
     if (s.heart){ ctx.font='28px sans-serif'; ctx.textAlign='center'; ctx.fillText('💛',s.x,s.y); } else ell(s.x,s.y,4,4,s.c); }); ctx.globalAlpha=1;
   flies.filter(vis).forEach(f => drawFly(f,t));
+  npcs.filter(n=>n.nameTimer>0&&vis(n)).forEach(n=>{
+    const al=Math.min(1,n.nameTimer), yy=n.y-SPECIES[n.kind].top*n.s-16;
+    ctx.save(); ctx.globalAlpha=al; ctx.font=`bold ${Math.round(16*n.s)}px ui-rounded,system-ui`; ctx.textAlign='center';
+    ctx.lineWidth=4; ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.fillStyle='#fff';
+    ctx.strokeText(SPECIES[n.kind].label,n.x,yy); ctx.fillText(SPECIES[n.kind].label,n.x,yy); ctx.restore(); ctx.globalAlpha=1; });
 
   // hint arrow to nearest egg
   if (playing && eggs.length){
@@ -830,7 +865,10 @@ function frame(now){
       ctx.save(); ctx.translate(ax,ay); ctx.rotate(a); ctx.globalAlpha=.55+Math.sin(t*5)*.25;
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-8,-11); ctx.lineTo(-3,0); ctx.lineTo(-8,11); ctx.closePath(); ctx.fill(); ctx.restore(); }
   }
-  ctx.setTransform(dpr,0,0,dpr,0,0); drawAmbients(t);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(nightMode){ ctx.fillStyle='rgba(0,8,28,.62)'; ctx.fillRect(0,0,VW,VH);
+    starPositions.forEach(([nx,ny,r,ph])=>{ const tw=(Math.sin(t*1.8+ph)+1)/2; ctx.globalAlpha=tw*.65+.2; ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(nx*VW,ny*VH,r,0,7); ctx.fill(); }); ctx.globalAlpha=1; }
+  drawAmbients(t);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
