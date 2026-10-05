@@ -274,6 +274,8 @@ cv.addEventListener('pointerdown', e => {
   if (Math.hypot(p.x - dino.x, p.y - (dino.y - 40)) < 60) { roar(); return; }
   const friend = npcs.find(n => Math.hypot(p.x - n.x, p.y - (n.y - 40*n.s)) < 60*n.s + 10);
   if (friend) { npcRoar(friend); return; }
+  const tapVolcano = volcanoes.find(v => p.x>v.x-200 && p.x<v.x+200 && p.y>v.y-250 && p.y<v.y+20);
+  if(tapVolcano){ erupt(tapVolcano); return; }
   const tapTree = trees.find(tr => Math.hypot(p.x-tr.x, p.y-tr.y) < 55*tr.s);
   if(tapTree){ const M=MAPS[mapName]; for(let k=0;k<12;k++) sparks.push({x:tapTree.x+(Math.random()-.5)*44*tapTree.s,y:tapTree.y-52*tapTree.s,vx:(Math.random()-.5)*90,vy:-50-Math.random()*70,life:0.9,c:k<4?M.fruitColor:M.leafA[0]}); return; }
   if(inWater(p.x,p.y,0)){ for(let k=0;k<14;k++){ const a=k/14*Math.PI*2; sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*40,vy:Math.sin(a)*20,life:1,c:'rgba(255,255,255,.75)'}); } return; }
@@ -310,6 +312,11 @@ function roar(){
   const a = audio(); if (!a) return;
   if (a.currentTime - lastRoar < .4) return; lastRoar = a.currentTime;
   playRoar(SPECIES[speciesName].pitch, 1);
+  const et=a.currentTime+.28;
+  if(speciesName==='unicorn'){ [880,1100,1320].forEach((f,i)=>{ const ti=et+i*.1,o=a.createOscillator(),g=a.createGain(); o.type='triangle'; o.frequency.value=f; g.gain.setValueAtTime(.13,ti); g.gain.exponentialRampToValueAtTime(.001,ti+.35); o.connect(g); g.connect(a.destination); o.start(ti); o.stop(ti+.4); }); }
+  if(speciesName==='ptero'){ const o=a.createOscillator(),g=a.createGain(); o.type='triangle'; o.frequency.setValueAtTime(1900,et); o.frequency.linearRampToValueAtTime(650,et+.55); g.gain.setValueAtTime(.18,et); g.gain.exponentialRampToValueAtTime(.001,et+.65); o.connect(g); g.connect(a.destination); o.start(et); o.stop(et+.7); }
+  if(speciesName==='brachi'){ const o=a.createOscillator(),g=a.createGain(); o.type='sine'; o.frequency.setValueAtTime(32,et); o.frequency.exponentialRampToValueAtTime(18,et+.9); g.gain.setValueAtTime(.22,et); g.gain.exponentialRampToValueAtTime(.001,et+1.3); o.connect(g); g.connect(a.destination); o.start(et); o.stop(et+1.4); }
+  if(speciesName==='anky'){ const o=a.createOscillator(),g=a.createGain(); o.type='sawtooth'; o.frequency.setValueAtTime(55,et); o.frequency.exponentialRampToValueAtTime(28,et+.6); g.gain.setValueAtTime(.18,et); g.gain.exponentialRampToValueAtTime(.001,et+.9); o.connect(g); g.connect(a.destination); o.start(et); o.stop(et+1); }
   npcs.forEach(n => { if (n.cool <= 0 && Math.hypot(n.x-dino.x, n.y-dino.y) < 420){ n.cool = 2.5; n.reply = .5 + Math.random()*.6; } });
 }
 function playRoar(pitch, vol){
@@ -361,6 +368,15 @@ function munch(){
   [640,900].forEach((f,i)=>{ const t=a.currentTime+i*.04, o=a.createOscillator(), g=a.createGain();
     o.type='sine'; o.frequency.value=f; g.gain.setValueAtTime(.12,t); g.gain.exponentialRampToValueAtTime(.001,t+.07);
     o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+.09); });
+}
+function erupt(v){
+  const a=audio(); if(!a) return;
+  v.erupting=2.5; vibrate([80,40,200,40,300]);
+  ['sawtooth','sine'].forEach((type,i)=>{ const o=a.createOscillator(), g=a.createGain();
+    o.type=type; o.frequency.setValueAtTime(38+i*18,a.currentTime); o.frequency.exponentialRampToValueAtTime(18+i*8,a.currentTime+2);
+    g.gain.setValueAtTime(.28-i*.06,a.currentTime); g.gain.exponentialRampToValueAtTime(.001,a.currentTime+2.8);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+3); });
+  for(let k=0;k<70;k++) sparks.push({x:v.x+(Math.random()-.5)*44,y:v.y-232,vx:(Math.random()-.5)*280,vy:-160-Math.random()*380,life:2,c:['#ff4400','#ff8800','#ffcc00','#ff2200','#ff6600'][k%5]});
 }
 function footstep(pitch=1){
   const a=audio(); if(!a) return;
@@ -723,6 +739,15 @@ function drawVolcano(v,t){
   ell(x,y-232,58,15,'#4a3020'); ell(x,y-232,44,9,`rgba(255,${110+glow*60},20,1)`);
   for (let k=0;k<5;k++){ const ph=(t*.22+k/5)%1;
     ell(x+Math.sin(t+k*2)*25*ph, y-255-ph*200, 22+ph*45, 18+ph*35, `rgba(150,150,150,${.55*(1-ph)})`); }
+  if(v.erupting>0){ const ei=Math.min(1,v.erupting);
+    ctx.globalAlpha=ei*(.5+Math.sin(t*10)*.15); ell(x,y-236,95,62,'rgba(255,55,0,.55)');
+    ctx.strokeStyle=`rgba(255,130,0,${ei*.8})`; ctx.lineWidth=12; ctx.lineCap='round';
+    [[-32,-155,-48],[24,-98,40],[-10,-178,54]].forEach(([sx,ey,ex])=>{
+      ctx.beginPath(); ctx.moveTo(x+sx*.6,y-228); ctx.quadraticCurveTo(x+sx,y+(ey-228)/2,x+ex,y+ey); ctx.stroke(); });
+    // extra fast smoke
+    for(let k=0;k<3;k++){ const ph2=(t*.6+k/3)%1; ctx.globalAlpha=ei*(1-ph2)*.6;
+      ell(x+(Math.random()-.5)*30*ph2, y-258-ph2*180, 18+ph2*50, 14+ph2*40, `rgba(80,60,60,1)`); }
+  }
   ctx.globalAlpha = 1;
 }
 function drawFly(f,t){
@@ -763,14 +788,14 @@ const npcs = [];
     const x = 150+rnd()*(W-300), y = 150+rnd()*(H-300);
     if (blocked(x,y) || Math.hypot(x-START.x,y-START.y) < 350 || npcs.some(n => Math.hypot(n.x-x,n.y-y) < 450)) continue;
     const n = {type:'dino', npc:true, kind:kinds[(rnd()*kinds.length)|0], skin:skins[(rnd()*skins.length)|0], s:1,
-      x, y, home:{x,y}, dir:rnd()<.5?1:-1, walk:0, moving:false, roar:0, blink:0, cool:0, reply:0, wait:rnd()*3, goal:null, greeted:false, nameTimer:0};
+      x, y, home:{x,y}, dir:rnd()<.5?1:-1, walk:0, moving:false, roar:0, blink:0, cool:0, reply:0, wait:rnd()*3, goal:null, greeted:false, nameTimer:0, sleepTimer:0};
     npcs.push(n);
     if (rnd() < .6) for (let b=0, nb=1+(rnd()<.4); b<nb; b++)
       npcs.push({...n, baby:true, parent:n, s:.55, x:x-50-b*35, y:y+25+b*15, home:null, goal:null, off:{x:-55-b*40, y:20+b*25}});
   }
 })();
 function npcRoar(n){
-  n.roar = 1; n.cool = Math.max(n.cool, 1.5); n.nameTimer = 2.5;
+  n.roar = 1; n.cool = Math.max(n.cool, 1.5); n.nameTimer = 2.5; n.sleepTimer = 0;
   for (let k=0;k<3;k++) sparks.push({heart:true, x:n.x+(Math.random()-.5)*40, y:n.y-70*n.s-k*12, vx:(Math.random()-.5)*30, vy:-60, life:1.2});
   const vol = Math.max(.2, Math.min(.75, 1 - Math.hypot(n.x-dino.x,n.y-dino.y)/800));
   playRoar(SPECIES[n.kind].pitch * (n.baby ? 1.7 : 1), vol * (n.baby ? .7 : 1));
@@ -803,6 +828,7 @@ function updateNPC(n, dt){
       const gx=n.home.x+Math.cos(a)*r, gy=n.home.y+Math.sin(a)*r; if (!blocked(gx,gy)) n.goal={x:gx,y:gy}; }
   }
   n.moving = moved; if (moved) n.walk += dt*(n.baby?16:9);
+  if(!n.baby){ if(moved || dP<220) n.sleepTimer=0; else n.sleepTimer+=dt; if(n.sleepTimer>10) n.blink=.12; }
   if(!n.baby) foods.forEach(f=>{ if(!f.eaten && Math.hypot(n.x-f.x,n.y-f.y)<38){ f.eaten=true; f.respawnIn=8+Math.random()*5; for(let k=0;k<6;k++) sparks.push({x:f.x+(Math.random()-.5)*18,y:f.y-12,vx:(Math.random()-.5)*45,vy:-38-Math.random()*28,life:.65,c:'#ffff80'}); } });
 }
 
@@ -878,6 +904,7 @@ function frame(now){
   flies.forEach(f => { f.a += dt*(.6+Math.sin(t+f.x)*.4); f.x += Math.cos(f.a)*40*dt; f.y += Math.sin(f.a*1.3)*30*dt;
     f.x=(f.x+W)%W; f.y=(f.y+H)%H; });
   for (let i=sparks.length-1;i>=0;i--){ const s=sparks[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=(s.heart?-30:500)*dt; s.life-=dt*(s.heart?.8:1.4); if (s.life<=0) sparks.splice(i,1); }
+  volcanoes.forEach(v=>{ if(v.erupting>0) v.erupting=Math.max(0,v.erupting-dt); });
   updateAmbients(dt,t);
 
   // camera
@@ -908,6 +935,11 @@ function frame(now){
   sparks.forEach(s => { ctx.globalAlpha=Math.min(1,s.life);
     if (s.heart){ ctx.font='28px sans-serif'; ctx.textAlign='center'; ctx.fillText('💛',s.x,s.y); } else ell(s.x,s.y,4,4,s.c); }); ctx.globalAlpha=1;
   flies.filter(vis).forEach(f => drawFly(f,t));
+  npcs.filter(n=>n.sleepTimer>10&&vis(n)).forEach(n=>{
+    const yb=n.y-SPECIES[n.kind].top*n.s-8;
+    ['z','Z'].forEach((z,i)=>{ const bob=Math.abs(Math.sin(t*.9+i))*.6+.3;
+      ctx.save(); ctx.globalAlpha=bob; ctx.font=`bold ${Math.round((13+i*5)*n.s)}px ui-rounded,system-ui`; ctx.textAlign='center';
+      ctx.fillStyle='#aaddff'; ctx.fillText(z,n.x+(9+i*11)*n.s,yb-i*14*n.s-Math.sin(t*.7+i)*5); ctx.restore(); ctx.globalAlpha=1; }); });
   npcs.filter(n=>n.nameTimer>0&&vis(n)).forEach(n=>{
     const al=Math.min(1,n.nameTimer), yy=n.y-SPECIES[n.kind].top*n.s-16;
     ctx.save(); ctx.globalAlpha=al; ctx.font=`bold ${Math.round(16*n.s)}px ui-rounded,system-ui`; ctx.textAlign='center';
