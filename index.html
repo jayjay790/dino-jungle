@@ -150,21 +150,24 @@ const MAPS = {
     flowerColors:['#fff','#ffe14d','#ff7eb6','#b78bff','#ff8a4d'],
     pondSand:'#e3c98d',pondWaterA:'#5cc8e8',pondWaterB:'#2e8fc0',lilyColor:'#4caf50',lilyFlower:'#ffc2dd',
     trunkColor:'#7a4e2a',leafA:['#1f6b2a','#2e8a35','#45a845'],leafB:['#22702f','#378f2e','#5bb53b'],fruitColor:'#ff5a4e',
-    rockA:'#8c8f94',rockB:'#b3b6bb',bushA:'#3c9a3a',bushB:'#2f8a43',bushTop:'#52b04a',bushTopB:'#45a656'},
+    rockA:'#8c8f94',rockB:'#b3b6bb',bushA:'#3c9a3a',bushB:'#2f8a43',bushTop:'#52b04a',bushTopB:'#45a656',
+    foods:['🍎','🍌','🍇','🥥','🍓','🍉']},
   ice:{label:'Ice Kingdom',icon:'❄️',
     bg:'#0d1f38',groundFill:'#c8dff0',blobA:'rgba(180,210,240,.15)',blobB:'rgba(255,255,255,.12)',
     trail:'rgba(150,190,230,.65)',clearing:'rgba(150,190,230,.55)',grassColor:'#8ab8d8',
     flowerColors:['#fff','#c8e8ff','#a8d8f8','#e0f0ff'],
     pondSand:'#a8c8e8',pondWaterA:'#eaf6ff',pondWaterB:'#b8d8f0',lilyColor:'#c0e8ff',lilyFlower:'#ffffff',
     trunkColor:'#4a6888',leafA:['#c8e4f8','#d8ecff','#e8f4ff'],leafB:['#b8daf4','#c8e4ff','#daeeff'],fruitColor:'#a8d0f8',
-    rockA:'#7898b8',rockB:'#a8c8e0',bushA:'#b0d4f0',bushB:'#98c4e8',bushTop:'#c8e0f8',bushTopB:'#d8ecff'},
+    rockA:'#7898b8',rockB:'#a8c8e0',bushA:'#b0d4f0',bushB:'#98c4e8',bushTop:'#c8e0f8',bushTopB:'#d8ecff',
+    foods:['🐟','🫐','🍦','⭐','🪨','🧊']},
   candy:{label:'Candy Land',icon:'🍭',
     bg:'#2a0840',groundFill:'#f4c8f0',blobA:'rgba(255,140,220,.12)',blobB:'rgba(255,240,160,.10)',
     trail:'rgba(255,200,80,.6)',clearing:'rgba(255,200,80,.55)',grassColor:'#e060c0',
     flowerColors:['#ff80c0','#ff4488','#ffe060','#80ffff','#c080ff','#fff'],
     pondSand:'#ffb8e8',pondWaterA:'#ff80cc',pondWaterB:'#ee40a8',lilyColor:'#ff60b0',lilyFlower:'#ffffff',
     trunkColor:'#e84080',leafA:['#ff90d0','#ff60b8','#ff40a0'],leafB:['#c060e8','#a040cc','#d080f8'],fruitColor:'#ffee40',
-    rockA:'#c080e8',rockB:'#d8a8f8',bushA:'#ff80c0',bushB:'#e860a8',bushTop:'#ff90cc',bushTopB:'#ee70b8'},
+    rockA:'#c080e8',rockB:'#d8a8f8',bushA:'#ff80c0',bushB:'#e860a8',bushTop:'#ff90cc',bushTopB:'#ee70b8',
+    foods:['🍭','🍬','🍰','🧁','🍩','🍫']},
 };
 let mapName = 'jungle';
 try { const sm=localStorage.getItem('dinoMap'); if(MAPS[sm]) mapName=sm; } catch(e){}
@@ -326,6 +329,30 @@ function chime(){
   [660, 880, 1320].forEach((f,i) => { const t=a.currentTime+i*.09, o=a.createOscillator(), gn=a.createGain();
     o.type='triangle'; o.frequency.value=f; gn.gain.setValueAtTime(.25,t); gn.gain.exponentialRampToValueAtTime(.0001,t+.35);
     o.connect(gn); gn.connect(a.destination); o.start(t); o.stop(t+.4); });
+}
+
+// ---------- food ----------
+const foods = [];
+function munch(){
+  const a=audio(); if(!a) return;
+  [640,900].forEach((f,i)=>{ const t=a.currentTime+i*.04, o=a.createOscillator(), g=a.createGain();
+    o.type='sine'; o.frequency.value=f; g.gain.setValueAtTime(.12,t); g.gain.exponentialRampToValueAtTime(.001,t+.07);
+    o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+.09); });
+}
+function placeFoods(){
+  foods.length=0;
+  const emojis=MAPS[mapName].foods; let tries=0;
+  while(foods.length<28 && tries++<4000){
+    const x=120+Math.random()*(W-240), y=120+Math.random()*(H-240);
+    if(free(x,y,22) && foods.every(f=>Math.hypot(f.x-x,f.y-y)>120))
+      foods.push({type:'food',x,y,emoji:emojis[Math.floor(Math.random()*emojis.length)],eaten:false,respawnIn:0,bob:Math.random()*7});
+  }
+}
+function drawFood(f,t){
+  if(f.eaten) return;
+  const fl=Math.sin(t*2.2+f.bob)*3;
+  ctx.save(); ctx.globalAlpha=.92; ctx.font='28px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(f.emoji,f.x,f.y-14+fl); ctx.restore(); ctx.globalAlpha=1;
 }
 
 // ---------- music ----------
@@ -700,6 +727,7 @@ function updateNPC(n, dt){
       const gx=n.home.x+Math.cos(a)*r, gy=n.home.y+Math.sin(a)*r; if (!blocked(gx,gy)) n.goal={x:gx,y:gy}; }
   }
   n.moving = moved; if (moved) n.walk += dt*(n.baby?16:9);
+  if(!n.baby) foods.forEach(f=>{ if(!f.eaten && Math.hypot(n.x-f.x,n.y-f.y)<38){ f.eaten=true; f.respawnIn=8+Math.random()*5; for(let k=0;k<6;k++) sparks.push({x:f.x+(Math.random()-.5)*18,y:f.y-12,vx:(Math.random()-.5)*45,vy:-38-Math.random()*28,life:.65,c:'#ffff80'}); } });
 }
 
 // ---------- game state ----------
@@ -707,7 +735,7 @@ const eggLabel = document.getElementById('eggs');
 let found = 0, playing = false;
 const overlay = document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovText=document.getElementById('ovText'), ovBtn=document.getElementById('ovBtn'), menuBtn=document.getElementById('menu-btn');
 function drawSlots(){ eggLabel.innerHTML = Array.from({length:EGG_COUNT}, (_,i) => `<span class="${i<found?'got':''}">🥚</span>`).join(''); }
-function newGame(){ placeEggs(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; }
+function newGame(){ placeEggs(); placeFoods(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; }
 ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); playMapMusic(); });
 menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
 newGame();
@@ -754,6 +782,12 @@ function frame(now){
         for(let k=0;k<24;k++) sparks.push({heart:true,x:dino.x+(Math.random()-.5)*100,y:dino.y-50,vx:(Math.random()-.5)*120,vy:-120-Math.random()*120,life:2.5});
         roar(); setTimeout(() => { ovTitle.textContent='Yay!'; ovText.textContent='🎉 🦖 🎉'; overlay.hidden=false; menuBtn.classList.remove('vis'); }, 1400); }
     } }
+  // food eating
+  foods.forEach(f => {
+    if(f.eaten){ f.respawnIn-=dt; if(f.respawnIn<=0) f.eaten=false; return; }
+    if(Math.hypot(dino.x-f.x,dino.y-f.y)<42){ f.eaten=true; f.respawnIn=9+Math.random()*6; munch();
+      for(let k=0;k<10;k++) sparks.push({x:f.x+(Math.random()-.5)*20,y:f.y-14,vx:(Math.random()-.5)*70,vy:-55-Math.random()*50,life:.8,c:['#ffff80','#ff80c0','#80ffff'][k%3]}); }
+  });
   npcs.forEach(n => updateNPC(n, dt));
   flies.forEach(f => { f.a += dt*(.6+Math.sin(t+f.x)*.4); f.x += Math.cos(f.a)*40*dt; f.y += Math.sin(f.a*1.3)*30*dt;
     f.x=(f.x+W)%W; f.y=(f.y+H)%H; });
@@ -777,10 +811,10 @@ function frame(now){
 
   // depth-sorted objects in view
   const pad=140, vis = o => o.x>camX-pad && o.x<camX+vw+pad && o.y>camY-pad && o.y<camY+vh+pad*1.5;
-  const list = [...trees,...rocks,...bushes,...eggs,...npcs,...volcanoes,dino].filter(o => o.type==='volcano' ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
+  const list = [...trees,...rocks,...bushes,...eggs,...foods,...npcs,...volcanoes,dino].filter(o => o.type==='volcano' ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
   for (const o of list){
     if (o.type==='tree') drawTree(o); else if (o.type==='rock') drawRock(o);
-    else if (o.type==='bush') drawBush(o); else if (o.type==='egg') drawEgg(o,t); else if (o.type==='volcano') drawVolcano(o,t); else drawDino(o,t);
+    else if (o.type==='bush') drawBush(o); else if (o.type==='egg') drawEgg(o,t); else if (o.type==='food') drawFood(o,t); else if (o.type==='volcano') drawVolcano(o,t); else drawDino(o,t);
   }
   if (target){ const r=14+Math.sin(t*8)*4; ctx.strokeStyle='rgba(255,255,255,.8)'; ctx.lineWidth=4;
     ctx.beginPath(); ctx.ellipse(target.x,target.y,r,r*.5,0,0,7); ctx.stroke(); }
