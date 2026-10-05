@@ -60,6 +60,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
 .mp{width:90px;height:64px;border-radius:16px;border:4px solid transparent;background:rgba(116,195,76,.35);cursor:pointer;padding:0;font-size:32px;display:flex;align-items:center;justify-content:center;}
 .mp.sel{border-color:var(--panel-ink);background:rgba(116,195,76,.7)}
 .card .btn{width:auto;height:auto;padding:10px 46px;font-size:56px;margin:0 auto}
+#total-score{font-size:18px;font-weight:600;opacity:.55;margin:-10px 0 12px;}
 @media (max-width:520px){
   #roar{width:110px;height:110px;font-size:54px}
 }
@@ -70,17 +71,25 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
   touch-action:none;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
 #menu-btn.vis{display:flex;}
 #menu-btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.25);}
+#mute-btn{position:fixed;right:calc(22px + env(safe-area-inset-right,0px));top:calc(14px + env(safe-area-inset-top,0px));
+  width:62px;height:62px;border-radius:50%;font-size:26px;border:none;background:var(--panel);color:var(--panel-ink);
+  box-shadow:0 4px 0 rgba(0,0,0,.25);cursor:pointer;display:none;align-items:center;justify-content:center;
+  touch-action:none;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+#mute-btn.vis{display:flex;}
+#mute-btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.25);}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="eggs" aria-label="Eggs found"></div>
 <button id="menu-btn" aria-label="Menu">🏠</button>
+<button id="mute-btn" aria-label="Mute">🔊</button>
 
 <div id="overlay">
   <div class="card">
     <h1 id="ovTitle">Dino Jungle</h1>
     <div class="big" id="ovText">🦖 🥚</div>
+    <div id="total-score"></div>
     <div class="maps" id="maps" aria-label="Pick a map"></div>
     <div class="species" id="species" aria-label="Pick a dinosaur"></div>
     <div class="swatches" id="swatches" aria-label="Dino colour"></div>
@@ -225,6 +234,7 @@ const SPEED = 200;
 const STEP_PITCH = {rex:1,trike:.9,steg:.85,brachi:.55,unicorn:1.3,para:1,anky:.75,ptero:1.7};
 let stepCooldown = 0;
 const vibrate = p => { try{navigator.vibrate(p);}catch(e){} };
+let muted = false;
 const SKINS = {
   blue:   {G:'#3d8bfd', DG:'#2563c9', BEL:'#c4e2ff', SP:'#ffd23f'},
   purple: {G:'#9b5de5', DG:'#6c3bb0', BEL:'#e8d8ff', SP:'#ffd23f'},
@@ -248,7 +258,7 @@ function drawSwatches(){
 }
 swWrap.addEventListener('click', e => { const b = e.target.closest('[data-skin]'); if (!b) return;
   skinName = b.dataset.skin; try { localStorage.setItem('dinoSkin', skinName); } catch(e){} drawSwatches(); drawPicker(); dino.roar = .6; });
-const blocked = (x,y) => x<40 || y<40 || x>W-40 || y>H-40 || inWater(x,y,8) ||
+const blocked = (x,y,skipWater=false) => x<40||y<40||x>W-40||y>H-40||(!skipWater&&inWater(x,y,8))||
   solids.some(o => Math.hypot(x-o.x, y-o.y) < (o.type==='tree' ? 14 : o.r) + 16);
 
 // ---------- input ----------
@@ -311,7 +321,7 @@ function roar(){
   npcs.forEach(n => { if (n.cool <= 0 && Math.hypot(n.x-dino.x, n.y-dino.y) < 420){ n.cool = 2.5; n.reply = .5 + Math.random()*.6; } });
 }
 function playRoar(pitch, vol){
-  const a = audio(); if (!a) return;
+  if(muted) return; const a = audio(); if (!a) return;
   const {bus, noise} = roarFX(a);
   const t = a.currentTime + .01, D = 1.5, p = (.85 + Math.random()*.3) * pitch;   // every roar slightly different
   const nodes = [];
@@ -346,7 +356,7 @@ function playRoar(pitch, vol){
   nodes.forEach(n => { n.start(t); n.stop(t+D+.1); });
 }
 function chime(){
-  const a = audio(); if (!a) return;
+  if(muted) return; const a = audio(); if (!a) return;
   [660, 880, 1320].forEach((f,i) => { const t=a.currentTime+i*.09, o=a.createOscillator(), gn=a.createGain();
     o.type='triangle'; o.frequency.value=f; gn.gain.setValueAtTime(.25,t); gn.gain.exponentialRampToValueAtTime(.0001,t+.35);
     o.connect(gn); gn.connect(a.destination); o.start(t); o.stop(t+.4); });
@@ -355,7 +365,7 @@ function chime(){
 // ---------- food ----------
 const foods = [];
 function munch(){
-  const a=audio(); if(!a) return;
+  if(muted) return; const a=audio(); if(!a) return;
   [640,900].forEach((f,i)=>{ const t=a.currentTime+i*.04, o=a.createOscillator(), g=a.createGain();
     o.type='sine'; o.frequency.value=f; g.gain.setValueAtTime(.12,t); g.gain.exponentialRampToValueAtTime(.001,t+.07);
     o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+.09); });
@@ -370,7 +380,7 @@ function erupt(v){
   for(let k=0;k<70;k++) sparks.push({x:v.x+(Math.random()-.5)*44,y:v.y-232,vx:(Math.random()-.5)*280,vy:-160-Math.random()*380,life:2,c:['#ff4400','#ff8800','#ffcc00','#ff2200','#ff6600'][k%5]});
 }
 function footstep(pitch=1){
-  const a=audio(); if(!a) return;
+  if(muted) return; const a=audio(); if(!a) return;
   const o=a.createOscillator(), g=a.createGain();
   o.type='sine'; o.frequency.setValueAtTime(85*pitch,a.currentTime); o.frequency.exponentialRampToValueAtTime(28*pitch,a.currentTime+.09);
   g.gain.setValueAtTime(.13,a.currentTime); g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.11);
@@ -401,7 +411,7 @@ const MUSIC = {
 };
 function stopMusic(){ if(musicTimer){clearInterval(musicTimer);musicTimer=null;} }
 function playMapMusic(){
-  stopMusic(); const a=audio(); if(!a) return;
+  stopMusic(); if(muted) return; const a=audio(); if(!a) return;
   const {seq,tempo,type}=MUSIC[mapName]||MUSIC.jungle; let idx=0;
   const note=()=>{ const f=seq[idx++%seq.length]; const o=a.createOscillator(),g=a.createGain();
     o.type=type; o.frequency.value=f;
@@ -829,8 +839,14 @@ let found = 0, playing = false;
 const overlay = document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovText=document.getElementById('ovText'), ovBtn=document.getElementById('ovBtn'), menuBtn=document.getElementById('menu-btn');
 function drawSlots(){ eggLabel.innerHTML = Array.from({length:EGG_COUNT}, (_,i) => `<span class="${i<found?'got':''}">🥚</span>`).join(''); }
 function newGame(){ placeEggs(); placeFoods(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; playerBaby.x=START.x-70; playerBaby.y=START.y+20; }
-ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); playMapMusic(); });
-menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
+const muteBtn=document.getElementById('mute-btn');
+muteBtn.addEventListener('pointerdown',e=>{ e.preventDefault(); muted=!muted; muteBtn.textContent=muted?'🔇':'🔊'; if(muted) stopMusic(); else playMapMusic(); });
+let totalEggs=0; try{totalEggs=parseInt(localStorage.getItem('totalEggs')||'0');}catch(e){}
+const totalScoreEl=document.getElementById('total-score');
+function updateTotalScore(){ totalScoreEl.textContent=totalEggs>0?`🥚 × ${totalEggs}`:''; }
+updateTotalScore();
+ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); muteBtn.classList.add('vis'); playMapMusic(); });
+menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); muteBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
 newGame();
 
 // ---------- loop ----------
@@ -848,9 +864,10 @@ function frame(now){
   if (len){ dx/=len; dy/=len;
     // steer around trees/rocks/water: try straight, then turn a bit more each time
     const base=Math.atan2(dy,dx), step=SPEED*dt; let moved=false;
+    const sw=speciesName==='ptero';
     for (const off of [0,.45,-.45,.9,-.9,1.35,-1.35]){
       const a=base+off, nx=dino.x+Math.cos(a)*step, ny=dino.y+Math.sin(a)*step;
-      if (!blocked(nx,ny)){ dino.x=nx; dino.y=ny; moved=true; if (Math.abs(Math.cos(a))>.2) dino.dir=Math.cos(a)>0?1:-1; break; }
+      if (!blocked(nx,ny,sw)){ dino.x=nx; dino.y=ny; moved=true; if (Math.abs(Math.cos(a))>.2) dino.dir=Math.cos(a)>0?1:-1; break; }
     }
     if (moved){ dino.moving=true; dino.walk += dt*12; if (target) target.t += dt; }
     else if (target && !dragging) target=null;
@@ -871,6 +888,8 @@ function frame(now){
   for (let i=eggs.length-1;i>=0;i--){ const e=eggs[i];
     if (Math.hypot(e.x-dino.x, e.y-dino.y) < 50){
       eggs.splice(i,1); found++; chime(); playerBaby.roar=1;
+      totalEggs++; try{localStorage.setItem('totalEggs',totalEggs);}catch(e){} updateTotalScore();
+      npcs.forEach(n=>{ if(!n.baby&&Math.hypot(n.x-e.x,n.y-e.y)<420){ n.roar=.7; n.sleepTimer=0; for(let k=0;k<3;k++) sparks.push({heart:true,x:n.x+(Math.random()-.5)*40,y:n.y-60*n.s-k*10,vx:(Math.random()-.5)*30,vy:-55,life:1.1}); } });
       dino.s = Math.min(1.6, dino.s + 0.06); dino.celebrate = 1.8;
       const _sk = Object.keys(SKINS); skinName = _sk[(_sk.indexOf(skinName)+1)%_sk.length];
       try { localStorage.setItem('dinoSkin', skinName); } catch(e){} drawSwatches(); drawPicker();
@@ -881,7 +900,7 @@ function frame(now){
       if (!eggs.length){ target=null;
         for(let k=0;k<180;k++) sparks.push({x:dino.x+(Math.random()-.5)*60,y:dino.y-60,vx:(Math.random()-.5)*900,vy:-100-Math.random()*800,life:2.2,c:['#ff9ecb','#8fd3ff','#ffd56b','#c7a0ff','#ff6b6b','#6bffb0','#fff'][k%7]});
         for(let k=0;k<24;k++) sparks.push({heart:true,x:dino.x+(Math.random()-.5)*100,y:dino.y-50,vx:(Math.random()-.5)*120,vy:-120-Math.random()*120,life:2.5});
-        roar(); setTimeout(() => { ovTitle.textContent='Yay!'; ovText.textContent='🎉 🦖 🎉'; overlay.hidden=false; menuBtn.classList.remove('vis'); }, 1400); }
+        roar(); setTimeout(() => { ovTitle.textContent='Yay!'; ovText.textContent='🎉 🦖 🎉'; overlay.hidden=false; menuBtn.classList.remove('vis'); muteBtn.classList.remove('vis'); }, 1400); }
     } }
   // food eating
   foods.forEach(f => {
