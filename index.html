@@ -103,10 +103,15 @@ let seed = 11;
 const rnd = () => (seed = (seed * 16807) % 2147483647, (seed - 1) / 2147483646);
 const W = 3200, H = 2400, START = {x:1600, y:1200}, EGG_COUNT = 10;
 const ponds = [{x:950,y:1550,rx:240,ry:150},{x:2350,y:1750,rx:290,ry:175},{x:2550,y:550,rx:180,ry:115},{x:520,y:2050,rx:150,ry:95},{x:1750,y:480,rx:140,ry:90}];
-const volcano = {type:'volcano', x:650, y:760, r:165};
+const volcanoes = [
+  {type:'volcano', x:650,  y:760,  r:165},
+  {type:'volcano', x:2900, y:320,  r:150},
+  {type:'volcano', x:200,  y:1850, r:155},
+  {type:'volcano', x:2750, y:1820, r:160},
+];
 const inWater = (x,y,m) => ponds.some(p => { const dx=(x-p.x)/(p.rx+m), dy=(y-p.y)/(p.ry+m); return dx*dx+dy*dy < 1; });
 
-const trees=[], rocks=[], bushes=[], solids=[{x:volcano.x, y:volcano.y-30, r:volcano.r}];
+const trees=[], rocks=[], bushes=[], solids=volcanoes.map(v => ({x:v.x, y:v.y-30, r:v.r}));
 const free = (x,y,m) => !inWater(x,y,m) && Math.hypot(x-START.x,y-START.y) > 150 && solids.every(o => Math.hypot(x-o.x,y-o.y) > o.r + m);
 const addTree = (x,y) => { const t={type:'tree',x,y,r:24,s:0.85+rnd()*0.45,h:rnd()}; trees.push(t); solids.push(t); };
 for (let x=0; x<=W; x+=75){ addTree(x+rnd()*25, 15+rnd()*15); addTree(x+rnd()*25, H-15-rnd()*15); }
@@ -610,7 +615,7 @@ function frame(now){
 
   // depth-sorted objects in view
   const pad=140, vis = o => o.x>camX-pad && o.x<camX+vw+pad && o.y>camY-pad && o.y<camY+vh+pad*1.5;
-  const list = [...trees,...rocks,...bushes,...eggs,...npcs,volcano,dino].filter(o => o===volcano ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
+  const list = [...trees,...rocks,...bushes,...eggs,...npcs,...volcanoes,dino].filter(o => o.type==='volcano' ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
   for (const o of list){
     if (o.type==='tree') drawTree(o); else if (o.type==='rock') drawRock(o);
     else if (o.type==='bush') drawBush(o); else if (o.type==='egg') drawEgg(o,t); else if (o.type==='volcano') drawVolcano(o,t); else drawDino(o,t);
