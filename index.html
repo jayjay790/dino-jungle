@@ -516,9 +516,11 @@ const npcs = [];
     {G:'#f27fb2', DG:'#c2507f', BEL:'#ffe0ef', SP:'#7fd1ff'},
     {G:'#e6c23a', DG:'#a88616', BEL:'#fff3c2', SP:'#e8453c'},
     {G:'#a9794f', DG:'#74502f', BEL:'#f1dcc2', SP:'#5fd0a0'},
+    {G:'#5bc94a', DG:'#3a8f2d', BEL:'#d4f7cf', SP:'#ff6b6b'},
+    {G:'#b07bff', DG:'#7744cc', BEL:'#e8d8ff', SP:'#ffd700'},
   ];
   let tries = 0;
-  while (npcs.filter(n => !n.baby).length < 8 && tries++ < 4000){
+  while (npcs.filter(n => !n.baby).length < 18 && tries++ < 8000){
     const x = 150+rnd()*(W-300), y = 150+rnd()*(H-300);
     if (blocked(x,y) || Math.hypot(x-START.x,y-START.y) < 350 || npcs.some(n => Math.hypot(n.x-x,n.y-y) < 450)) continue;
     const n = {type:'dino', npc:true, kind:kinds[(rnd()*kinds.length)|0], skin:skins[(rnd()*skins.length)|0], s:1,
