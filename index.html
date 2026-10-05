@@ -205,7 +205,7 @@ function buildGround(){
 buildGround();
 
 // ---------- dino ----------
-const dino = {type:'dino', x:START.x, y:START.y, dir:1, walk:0, moving:false, roar:0, blink:0, s:1};
+const dino = {type:'dino', x:START.x, y:START.y, dir:1, walk:0, moving:false, roar:0, blink:0, s:1, celebrate:0};
 const SPEED = 200;
 const SKINS = {
   blue:   {G:'#3d8bfd', DG:'#2563c9', BEL:'#c4e2ff', SP:'#ffd23f'},
@@ -222,7 +222,7 @@ function drawMapPicker(){
 mapWrap.addEventListener('click', e => {
   const b=e.target.closest('[data-map]'); if(!b) return;
   mapName=b.dataset.map; try{localStorage.setItem('dinoMap',mapName);}catch(e){}
-  drawMapPicker(); buildGround(); playing=false;
+  drawMapPicker(); buildGround(); playing=false; stopMusic();
 });
 const swWrap = document.getElementById('swatches');
 function drawSwatches(){
@@ -247,6 +247,9 @@ cv.addEventListener('pointerdown', e => {
   if (Math.hypot(p.x - dino.x, p.y - (dino.y - 40)) < 60) { roar(); return; }
   const friend = npcs.find(n => Math.hypot(p.x - n.x, p.y - (n.y - 40*n.s)) < 60*n.s + 10);
   if (friend) { npcRoar(friend); return; }
+  const tapTree = trees.find(tr => Math.hypot(p.x-tr.x, p.y-tr.y) < 55*tr.s);
+  if(tapTree){ const M=MAPS[mapName]; for(let k=0;k<12;k++) sparks.push({x:tapTree.x+(Math.random()-.5)*44*tapTree.s,y:tapTree.y-52*tapTree.s,vx:(Math.random()-.5)*90,vy:-50-Math.random()*70,life:0.9,c:k<4?M.fruitColor:M.leafA[0]}); return; }
+  if(inWater(p.x,p.y,0)){ for(let k=0;k<14;k++){ const a=k/14*Math.PI*2; sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*40,vy:Math.sin(a)*20,life:1,c:'rgba(255,255,255,.75)'}); } return; }
   target = {...p, t: 0}; dragging = true;
 });
 cv.addEventListener('pointermove', e => { if (dragging && target) Object.assign(target, toWorld(e)); });
@@ -325,6 +328,42 @@ function chime(){
     o.connect(gn); gn.connect(a.destination); o.start(t); o.stop(t+.4); });
 }
 
+// ---------- music ----------
+let musicTimer = null;
+const MUSIC = {
+  jungle:{seq:[196,220,261,329,261,220,246,196],tempo:370,type:'triangle'},
+  ice:   {seq:[783,880,1047,1174,1047,880,1047,783],tempo:650,type:'sine'},
+  candy: {seq:[523,659,784,659,784,880,784,659],tempo:220,type:'triangle'},
+};
+function stopMusic(){ if(musicTimer){clearInterval(musicTimer);musicTimer=null;} }
+function playMapMusic(){
+  stopMusic(); const a=audio(); if(!a) return;
+  const {seq,tempo,type}=MUSIC[mapName]||MUSIC.jungle; let idx=0;
+  const note=()=>{ const f=seq[idx++%seq.length]; const o=a.createOscillator(),g=a.createGain();
+    o.type=type; o.frequency.value=f;
+    g.gain.setValueAtTime(.06,a.currentTime); g.gain.exponentialRampToValueAtTime(.001,a.currentTime+tempo/1000*.85);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+tempo/1000); };
+  note(); musicTimer=setInterval(note,tempo);
+}
+
+// ---------- ambients ----------
+const ambients=[];
+function updateAmbients(dt,t){
+  if(mapName==='ice'&&Math.random()<dt*14) ambients.push({type:'snow',x:Math.random()*VW,y:-12,vx:(Math.random()-.5)*14,vy:28+Math.random()*22,r:2+Math.random()*3,life:1.2});
+  else if(mapName==='candy'&&Math.random()<dt*9) ambients.push({type:'star',x:Math.random()*VW,y:VH*(.1+Math.random()*.8),vx:(Math.random()-.5)*18,vy:-22-Math.random()*18,life:1.6,c:['#ff80c0','#ffee60','#80ffff','#c080ff','#fff'][Math.random()*5|0]});
+  else if(mapName==='jungle'&&Math.random()<dt*3) ambients.push({type:'firefly',x:Math.random()*VW,y:VH*(.15+Math.random()*.65),vx:(Math.random()-.5)*18,vy:(Math.random()-.5)*10,life:3+Math.random()*2,ph:Math.random()*7});
+  for(let i=ambients.length-1;i>=0;i--){ const a=ambients[i]; a.x+=a.vx*dt; a.y+=a.vy*dt; a.life-=dt; if(a.life<=0||a.y>VH+20||a.x<-20||a.x>VW+20) ambients.splice(i,1); }
+}
+function drawAmbients(t){
+  ambients.forEach(a=>{
+    ctx.globalAlpha=Math.min(1,a.life*.8);
+    if(a.type==='snow'){ ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(a.x,a.y,a.r,0,7); ctx.fill(); }
+    else if(a.type==='star'){ ctx.fillStyle=a.c; ctx.font='13px sans-serif'; ctx.textAlign='center'; ctx.fillText('✦',a.x,a.y); }
+    else if(a.type==='firefly'){ const g=(Math.sin(t*3+a.ph)+1)/2; ctx.globalAlpha=Math.min(1,a.life*.5)*g*.8; ctx.fillStyle='#ffff80'; ctx.beginPath(); ctx.arc(a.x,a.y,2.5+g*2,0,7); ctx.fill(); }
+  });
+  ctx.globalAlpha=1;
+}
+
 // ---------- butterflies & sparkles ----------
 const flies = Array.from({length:14}, () => ({x:Math.random()*W, y:Math.random()*H, a:Math.random()*7, c:['#ffde59','#ff8fd1','#8fe3ff','#fff'][(Math.random()*4)|0]}));
 const sparks = [];
@@ -367,11 +406,14 @@ function drawEgg(e,t){
 }
 // ---------- dinosaurs ----------
 const SPECIES = {
-  rex:    {label:'T-rex',         pitch:1,    top:110},
-  trike:  {label:'Triceratops',   pitch:1.15, top:90},
-  steg:   {label:'Stegosaurus',   pitch:1.3,  top:85},
-  brachi:   {label:'Brachiosaurus', pitch:.7,   top:165},
-  unicorn:  {label:'Unicorn',       pitch:1.55, top:118},
+  rex:    {label:'T-rex',           pitch:1,    top:110},
+  trike:  {label:'Triceratops',     pitch:1.15, top:90},
+  steg:   {label:'Stegosaurus',     pitch:1.3,  top:85},
+  brachi: {label:'Brachiosaurus',   pitch:.7,   top:165},
+  unicorn:{label:'Unicorn',         pitch:1.55, top:118},
+  para:   {label:'Parasaurolophus', pitch:1.2,  top:88},
+  anky:   {label:'Ankylosaurus',    pitch:0.85, top:52},
+  ptero:  {label:'Pterodactyl',     pitch:1.45, top:68},
 };
 let speciesName = 'rex';
 try { const sv = localStorage.getItem('dinoSpecies'); if (SPECIES[sv]) speciesName = sv; } catch(e){}
@@ -485,6 +527,55 @@ const BODY = {
     // front legs on top
     legAt(-10,-20-b,-leg*.5,G,1.1); legAt(16,-20-b,leg*.5,G,1.1);
   },
+  para({G,DG,BEL,SP}, b, leg, wag, d){
+    legAt(-20,-18-b,leg*.45,DG); legAt(14,-18-b,-leg*.45,DG);
+    ctx.fillStyle=G; ctx.beginPath(); ctx.moveTo(-26,-36-b); ctx.quadraticCurveTo(-52,-30-b+wag,-60,-16-b+wag); ctx.quadraticCurveTo(-44,-18-b,-24,-20-b); ctx.fill();
+    ell(-2,-32-b,36,22,G); ell(2,-23-b,24,10,BEL);
+    ell(26,-44-b,14,11,G); ell(40,-40-b,16,11,G);
+    tri(48,-36-b,64,-32-b,60,-26-b,DG); tri(48,-32-b,64,-32-b,58,-27-b,BEL);
+    ctx.lineWidth=13; ctx.lineCap='round'; ctx.strokeStyle=SP;
+    ctx.beginPath(); ctx.moveTo(34,-50-b); ctx.quadraticCurveTo(14,-76-b,-6,-70-b); ctx.stroke();
+    ctx.lineWidth=8; ctx.strokeStyle=G;
+    ctx.beginPath(); ctx.moveTo(34,-50-b); ctx.quadraticCurveTo(14,-76-b,-6,-70-b); ctx.stroke();
+    if(d.roar>.05) ell(60,-28-b,6,2+d.roar*5,'#7a1f1f');
+    else { ctx.strokeStyle=DG; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(57,-31-b,4,.3,1.4); ctx.stroke(); }
+    ell(36,-33-b,4,3,'rgba(255,130,150,.55)'); eyeAt(40,-44-b,5,d.blink);
+    legAt(-12,-16-b,-leg*.45,G); legAt(22,-16-b,leg*.45,G);
+  },
+  anky({G,DG,BEL,SP}, b, leg, wag, d){
+    legAt(-22,-16-b,leg*.3,DG); legAt(12,-16-b,-leg*.3,DG);
+    ctx.fillStyle=G; ctx.beginPath(); ctx.moveTo(-26,-30-b); ctx.quadraticCurveTo(-54,-26-b+wag,-68,-14-b+wag); ctx.quadraticCurveTo(-50,-16-b,-24,-18-b); ctx.fill();
+    ell(-68+wag,-14-b+wag,13,9,DG); ell(-66+wag,-14-b+wag,11,7,SP);
+    ell(-2,-28-b,42,20,G); ell(-2,-18-b,32,8,BEL);
+    for(let i=0;i<6;i++) ell(-22+i*11,-30-b,7,9,SP);
+    [[-20,-22],[-8,-24],[6,-24],[18,-20]].forEach(([x,y])=>tri(x-4,y-b,x,y-11-b,x+4,y-b,DG));
+    ell(36,-22-b,15,11,G); ell(48,-19-b,13,9,G);
+    if(d.roar>.05) ell(58,-15-b,6,2+d.roar*4,'#7a1f1f');
+    else { ctx.strokeStyle=DG; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(56,-18-b,4,.3,1.4); ctx.stroke(); }
+    ell(36,-18-b,3.5,2.5,'rgba(255,130,150,.55)'); eyeAt(38,-26-b,4.5,d.blink);
+    legAt(-14,-16-b,-leg*.3,G); legAt(18,-16-b,leg*.3,G);
+  },
+  ptero({G,DG,BEL,SP}, b, leg, wag, d){
+    const flap=Math.abs(Math.sin(d.walk*.5))*18;
+    ctx.fillStyle=G; ctx.beginPath();
+    ctx.moveTo(-4,-26-b); ctx.quadraticCurveTo(-44,-38-b-flap+wag,-68,-22-b-flap+wag);
+    ctx.quadraticCurveTo(-40,-14-b,-4,-14-b); ctx.fill();
+    ctx.strokeStyle=DG; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(-4,-26-b); ctx.quadraticCurveTo(-40,-34-b-flap+wag,-62,-20-b-flap+wag); ctx.stroke();
+    ctx.strokeStyle=DG; ctx.lineWidth=4; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-2,-12-b); ctx.lineTo(-6,4-b); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8,-12-b); ctx.lineTo(12,4-b); ctx.stroke();
+    ell(-5,5-b,6,3,DG); ell(13,5-b,6,3,DG);
+    ctx.fillStyle=G; ctx.beginPath();
+    ctx.moveTo(20,-28-b); ctx.quadraticCurveTo(28,-46-b-flap,40,-42-b-flap);
+    ctx.quadraticCurveTo(32,-30-b,20,-22-b); ctx.fill();
+    ell(8,-22-b,24,14,G); ell(10,-14-b,18,7,BEL);
+    tri(26,-36-b,20,-52-b,34,-38-b,SP);
+    ell(34,-34-b,13,10,G);
+    tri(40,-32-b,66,-28-b,40,-26-b,DG);
+    eyeAt(34,-37-b,4.5,d.blink);
+    if(d.roar>.05) ell(60,-26-b,5,2+d.roar*4,'#7a1f1f');
+  },
 };
 
 function drawDino(d,t){
@@ -494,9 +585,15 @@ function drawDino(d,t){
   const wag = Math.sin(t*(d.moving?10:3))*4;
   const sc = 1 + d.roar*.18;
   const z = d.s || 1;
-  if (d === dino){ ctx.strokeStyle='rgba(255,236,120,.9)'; ctx.lineWidth=4; ctx.beginPath(); ctx.ellipse(d.x,d.y+2,44+Math.sin(t*4)*3,15,0,0,7); ctx.stroke(); }
+  if (d === dino){
+    const cel = dino.celebrate > 0;
+    ctx.strokeStyle = cel ? `rgba(255,220,50,${.8+Math.sin(t*15)*.2})` : 'rgba(255,236,120,.9)';
+    ctx.lineWidth = cel ? 7 : 4;
+    ctx.beginPath(); ctx.ellipse(d.x,d.y+2,44+Math.sin(t*4)*3,15,0,0,7); ctx.stroke();
+  }
   ell(d.x, d.y+2, (kind==='rex'?36:46)*z, 10*z, 'rgba(0,0,0,.2)');
-  ctx.save(); ctx.translate(d.x, d.y); ctx.scale(d.dir*sc*z, sc*z);
+  const celebSc = (d===dino && dino.celebrate>0) ? 1+Math.abs(Math.sin(t*10))*dino.celebrate*.06 : 1;
+  ctx.save(); ctx.translate(d.x, d.y); ctx.scale(d.dir*sc*z*celebSc, sc*z*celebSc);
   ctx.lineCap='round';
   BODY[kind](d.skin || SKINS[skinName], bob, leg, wag, d, t);
   ctx.restore();
@@ -539,7 +636,7 @@ function drawPicker(){
     const k = btn.dataset.sp; btn.classList.toggle('sel', k===speciesName);
     const pc = btn.querySelector('canvas'), main = ctx;
     ctx = pc.getContext('2d'); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,168,160);
-    const [s,ox] = {rex:[1.25,96],trike:[1.2,80],steg:[1.25,98],brachi:[.98,88],unicorn:[1.1,80]}[k]; ctx.setTransform(s,0,0,s,ox,150);
+    const [s,ox] = {rex:[1.25,96],trike:[1.2,80],steg:[1.25,98],brachi:[.98,88],unicorn:[1.1,80],para:[1.15,86],anky:[1.1,90],ptero:[1.1,86]}[k]; ctx.setTransform(s,0,0,s,ox,150);
     drawDino({kind:k,x:0,y:0,dir:1,walk:0,moving:false,roar:0,blink:0,preview:true}, 0);
     ctx = main;
   });
@@ -610,8 +707,8 @@ const eggLabel = document.getElementById('eggs');
 let found = 0, playing = false;
 const overlay = document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovText=document.getElementById('ovText'), ovBtn=document.getElementById('ovBtn'), menuBtn=document.getElementById('menu-btn');
 function drawSlots(){ eggLabel.innerHTML = Array.from({length:EGG_COUNT}, (_,i) => `<span class="${i<found?'got':''}">🥚</span>`).join(''); }
-function newGame(){ placeEggs(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; target=null; }
-ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); });
+function newGame(){ placeEggs(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; }
+ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); playMapMusic(); });
 menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
 newGame();
 
@@ -640,24 +737,28 @@ function frame(now){
   }
   dino.roar = Math.max(0, dino.roar - dt*0.75);
   dino.blink -= dt; if (dino.blink < -3-Math.random()*3) dino.blink = .12;
+  if(dino.celebrate>0){ dino.celebrate=Math.max(0,dino.celebrate-dt); if(Math.random()<.3) sparks.push({heart:true,x:dino.x+(Math.random()-.5)*55,y:dino.y-55*dino.s,vx:(Math.random()-.5)*45,vy:-75-Math.random()*40,life:1.1}); }
 
   // eggs
   for (let i=eggs.length-1;i>=0;i--){ const e=eggs[i];
     if (Math.hypot(e.x-dino.x, e.y-dino.y) < 50){
       eggs.splice(i,1); found++; chime();
-      dino.s = Math.min(1.6, dino.s + 0.06);
+      dino.s = Math.min(1.6, dino.s + 0.06); dino.celebrate = 1.8;
       const _sk = Object.keys(SKINS); skinName = _sk[(_sk.indexOf(skinName)+1)%_sk.length];
       try { localStorage.setItem('dinoSkin', skinName); } catch(e){} drawSwatches(); drawPicker();
-      for (let k=0;k<16;k++) sparks.push({x:e.x,y:e.y-18,vx:(Math.random()-.5)*260,vy:-Math.random()*260,life:1,c:e.c});
+      for(let k=0;k<36;k++) sparks.push({x:e.x,y:e.y-18,vx:(Math.random()-.5)*400,vy:-80-Math.random()*320,life:1.3,c:e.c});
+      for(let k=0;k<8;k++) sparks.push({heart:true,x:e.x+(Math.random()-.5)*30,y:e.y-30,vx:(Math.random()-.5)*50,vy:-90-Math.random()*50,life:1.6});
       drawSlots(); eggLabel.classList.remove('pop'); void eggLabel.offsetWidth; eggLabel.classList.add('pop');
       if (!eggs.length){ target=null;
-        for (let k=0;k<80;k++) sparks.push({x:dino.x,y:dino.y-60,vx:(Math.random()-.5)*600,vy:-Math.random()*600,life:1.5,c:['#ff9ecb','#8fd3ff','#ffd56b','#c7a0ff','#fff'][k%5]});
+        for(let k=0;k<180;k++) sparks.push({x:dino.x+(Math.random()-.5)*60,y:dino.y-60,vx:(Math.random()-.5)*900,vy:-100-Math.random()*800,life:2.2,c:['#ff9ecb','#8fd3ff','#ffd56b','#c7a0ff','#ff6b6b','#6bffb0','#fff'][k%7]});
+        for(let k=0;k<24;k++) sparks.push({heart:true,x:dino.x+(Math.random()-.5)*100,y:dino.y-50,vx:(Math.random()-.5)*120,vy:-120-Math.random()*120,life:2.5});
         roar(); setTimeout(() => { ovTitle.textContent='Yay!'; ovText.textContent='🎉 🦖 🎉'; overlay.hidden=false; menuBtn.classList.remove('vis'); }, 1400); }
     } }
   npcs.forEach(n => updateNPC(n, dt));
   flies.forEach(f => { f.a += dt*(.6+Math.sin(t+f.x)*.4); f.x += Math.cos(f.a)*40*dt; f.y += Math.sin(f.a*1.3)*30*dt;
     f.x=(f.x+W)%W; f.y=(f.y+H)%H; });
   for (let i=sparks.length-1;i>=0;i--){ const s=sparks[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=(s.heart?-30:500)*dt; s.life-=dt*(s.heart?.8:1.4); if (s.life<=0) sparks.splice(i,1); }
+  updateAmbients(dt,t);
 
   // camera
   const vw=VW/Z, vh=VH/Z;
@@ -695,6 +796,7 @@ function frame(now){
       ctx.save(); ctx.translate(ax,ay); ctx.rotate(a); ctx.globalAlpha=.55+Math.sin(t*5)*.25;
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(16,0); ctx.lineTo(-8,-11); ctx.lineTo(-3,0); ctx.lineTo(-8,11); ctx.closePath(); ctx.fill(); ctx.restore(); }
   }
+  ctx.setTransform(dpr,0,0,dpr,0,0); drawAmbients(t);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
