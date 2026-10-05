@@ -41,9 +41,6 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
   box-shadow:0 6px 0 var(--sun-edge);cursor:pointer;touch-action:none;display:flex;align-items:center;justify-content:center;padding:0;}
 .btn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--sun-edge);}
 .btn:focus-visible{outline:4px solid #fff;outline-offset:3px;}
-#roar{position:fixed;right:calc(22px + env(safe-area-inset-right,0px));bottom:calc(30px + env(safe-area-inset-bottom,0px));
-  width:130px;height:130px;border-radius:50%;background:#ff7a3d;box-shadow:0 7px 0 #b84a17;color:#fff;font-size:64px;}
-#roar.on,#roar:active{box-shadow:0 2px 0 #b84a17;}
 
 #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,40,15,.45);}
 #overlay[hidden]{display:none}
@@ -75,7 +72,6 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
 <body>
 <canvas id="game"></canvas>
 <div id="eggs" aria-label="Eggs found"></div>
-<button class="btn" id="roar" aria-label="Roar">🦖</button>
 <button id="menu-btn" aria-label="Menu">🏠</button>
 
 <div id="overlay">
@@ -204,8 +200,6 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => { if (dragging && target) Object.assign(target, toWorld(e)); });
 ['pointerup','pointercancel'].forEach(ev => cv.addEventListener(ev, () => dragging = false));
 addEventListener('blur', () => { for (const k in held) held[k]=0; });
-const roarBtn = document.getElementById('roar'); roarBtn.addEventListener('click', e => e.preventDefault());
-roarBtn.addEventListener('pointerdown', e => { e.preventDefault(); roar(); });
 
 // ---------- sound ----------
 let ac = null;
