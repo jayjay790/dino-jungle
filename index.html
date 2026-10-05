@@ -105,7 +105,7 @@ addEventListener('resize', resize); resize();
 // ---------- world ----------
 let seed = 11;
 const rnd = () => (seed = (seed * 16807) % 2147483647, (seed - 1) / 2147483646);
-const W = 3200, H = 2400, START = {x:1600, y:1200}, EGG_COUNT = 6;
+const W = 3200, H = 2400, START = {x:1600, y:1200}, EGG_COUNT = 10;
 const ponds = [{x:950,y:1550,rx:240,ry:150},{x:2350,y:1750,rx:290,ry:175},{x:2550,y:550,rx:180,ry:115},{x:520,y:2050,rx:150,ry:95},{x:1750,y:480,rx:140,ry:90}];
 const volcano = {type:'volcano', x:650, y:760, r:165};
 const inWater = (x,y,m) => ponds.some(p => { const dx=(x-p.x)/(p.rx+m), dy=(y-p.y)/(p.ry+m); return dx*dx+dy*dy < 1; });
@@ -166,7 +166,7 @@ const ground = document.createElement('canvas'); ground.width=W; ground.height=H
 })();
 
 // ---------- dino ----------
-const dino = {type:'dino', x:START.x, y:START.y, dir:1, walk:0, moving:false, roar:0, blink:0};
+const dino = {type:'dino', x:START.x, y:START.y, dir:1, walk:0, moving:false, roar:0, blink:0, s:1};
 const SPEED = 200;
 const SKINS = {
   blue:   {G:'#3d8bfd', DG:'#2563c9', BEL:'#c4e2ff', SP:'#ffd23f'},
@@ -524,7 +524,7 @@ const eggLabel = document.getElementById('eggs');
 let found = 0, playing = false;
 const overlay = document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovText=document.getElementById('ovText'), ovBtn=document.getElementById('ovBtn'), menuBtn=document.getElementById('menu-btn');
 function drawSlots(){ eggLabel.innerHTML = Array.from({length:EGG_COUNT}, (_,i) => `<span class="${i<found?'got':''}">🥚</span>`).join(''); }
-function newGame(){ placeEggs(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; target=null; }
+function newGame(){ placeEggs(); found=0; drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; target=null; }
 ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); });
 menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
 newGame();
@@ -559,6 +559,9 @@ function frame(now){
   for (let i=eggs.length-1;i>=0;i--){ const e=eggs[i];
     if (Math.hypot(e.x-dino.x, e.y-dino.y) < 50){
       eggs.splice(i,1); found++; chime();
+      dino.s = Math.min(1.6, dino.s + 0.06);
+      const _sk = Object.keys(SKINS); skinName = _sk[(_sk.indexOf(skinName)+1)%_sk.length];
+      try { localStorage.setItem('dinoSkin', skinName); } catch(e){} drawSwatches(); drawPicker();
       for (let k=0;k<16;k++) sparks.push({x:e.x,y:e.y-18,vx:(Math.random()-.5)*260,vy:-Math.random()*260,life:1,c:e.c});
       drawSlots(); eggLabel.classList.remove('pop'); void eggLabel.offsetWidth; eggLabel.classList.add('pop');
       if (!eggs.length){ target=null;
