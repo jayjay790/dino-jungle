@@ -45,10 +45,14 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
 #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,40,15,.45);}
 #overlay[hidden]{display:none}
 .card{background:var(--panel);color:var(--panel-ink);border-radius:32px;padding:28px 34px;text-align:center;max-width:min(88vw,440px);
-  box-shadow:0 10px 0 rgba(0,0,0,.25);}
+  box-shadow:0 10px 0 rgba(0,0,0,.25);max-height:calc(100dvh - 24px);overflow-y:auto;touch-action:pan-y;}
 .card h1{margin:0 0 6px;font-size:52px;line-height:1.05}
 .card p{margin:0 0 20px;font-size:22px;line-height:1.35;font-weight:500}
 .card .big{font-size:64px;line-height:1.1;margin:0 0 16px}
+.card .big:empty{display:none}
+.stickers{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0 0 14px}
+.stk{position:static;width:48px;height:46px;border-radius:12px;background:rgba(255,214,80,.35);display:block;transition:filter .4s,opacity .4s}
+.stk.off{filter:grayscale(1);opacity:.3;background:rgba(0,0,0,.08)}
 .species{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:0 0 16px}
 .sp{width:84px;height:80px;border-radius:20px;border:4px solid transparent;background:rgba(116,195,76,.35);cursor:pointer;padding:0}
 .sp canvas{position:static;width:100%;height:100%}
@@ -91,8 +95,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
 <div id="overlay">
   <div class="card">
     <h1 id="ovTitle">Dino Jungle</h1>
-    <div class="big" id="ovText">🦖 🥚</div>
+    <div class="big" id="ovText"></div>
     <div id="total-score"></div>
+    <div class="stickers" id="stickers" aria-label="Dinos met"></div>
     <div class="modes" id="modes"><button class="mode-btn sel" data-mode="eggs">🥚 Eggs</button><button class="mode-btn" data-mode="parade">🎺 Parade</button></div>
     <div class="maps" id="maps" aria-label="Pick a map"></div>
     <div class="species" id="species" aria-label="Pick a dinosaur"></div>
@@ -150,7 +155,7 @@ function placeEggs(){
   const ePN=Math.ceil(EGG_COUNT/NESTS.length);
   NESTS.forEach((nest,ni)=>{
     let placed=0,tries=0;
-    while(placed<ePN&&tries++<2000){
+    while(placed<ePN&&eggs.length<EGG_COUNT&&tries++<2000){
       const a=Math.random()*Math.PI*2,d=50+Math.random()*130;
       const x=nest.x+Math.cos(a)*d, y=nest.y+Math.sin(a)*d;
       if(free(x,y,25)&&eggs.every(e=>Math.hypot(e.x-x,e.y-y)>55)){
@@ -249,6 +254,9 @@ buildGround();
 // ---------- dino ----------
 const dino = {type:'dino', x:START.x, y:START.y, dir:1, walk:0, moving:false, roar:0, blink:0, s:1, celebrate:0};
 const playerBaby = {type:'dino', x:START.x-70, y:START.y+20, dir:1, walk:0, moving:false, roar:0, blink:0, s:.52};
+const hatches=[], hatchlings=[], ripples=[]; // eggs cracking open, the babies that follow you, pond rings
+const HATCH_SKINS=[{G:'#2bb5a3',DG:'#1a7f72',BEL:'#c9f3ec',SP:'#ff8fb1'},{G:'#f27fb2',DG:'#c2507f',BEL:'#ffe0ef',SP:'#7fd1ff'},
+  {G:'#e6c23a',DG:'#a88616',BEL:'#fff3c2',SP:'#e8453c'},{G:'#5bc94a',DG:'#3a8f2d',BEL:'#d4f7cf',SP:'#ff6b6b'},{G:'#b07bff',DG:'#7744cc',BEL:'#e8d8ff',SP:'#ffd700'}];
 const SPEED = 200;
 const STEP_PITCH = {rex:1,trike:.9,steg:.85,brachi:.55,unicorn:1.3,para:1,anky:.75,ptero:1.7};
 let stepCooldown = 0;
@@ -302,17 +310,12 @@ cv.addEventListener('pointerdown', e => {
   if(nearDino){ roar(); lastTapTime=now2; return; }
   lastTapTime=0;
   const friend = npcs.find(n => Math.hypot(p.x - n.x, p.y - (n.y - 40*n.s)) < 60*n.s + 10);
-  if (friend) { npcRoar(friend); return; }
-  if(playMode==='parade'){
-    const pFriend=npcs.find(n=>!n.baby&&!n.npc_inParade&&Math.hypot(p.x-n.x,p.y-n.y)<90);
-    if(pFriend&&paradeMembers.length<8){ pFriend.npc_inParade=true; paradeMembers.push(pFriend); npcRoar(pFriend);
-      for(let k=0;k<14;k++) sparks.push({heart:true,x:pFriend.x+(Math.random()-.5)*40,y:pFriend.y-50,vx:(Math.random()-.5)*60,vy:-80,life:1.4}); drawSlots(); return; }
-  }
+  if (friend) { if(!recruit(friend)) npcRoar(friend); return; }
   const tapVolcano = volcanoes.find(v => p.x>v.x-200 && p.x<v.x+200 && p.y>v.y-250 && p.y<v.y+20);
   if(tapVolcano){ erupt(tapVolcano); return; }
   const tapTree = trees.find(tr => Math.hypot(p.x-tr.x, p.y-tr.y) < 55*tr.s);
   if(tapTree){ const M=MAPS[mapName]; for(let k=0;k<12;k++) sparks.push({x:tapTree.x+(Math.random()-.5)*44*tapTree.s,y:tapTree.y-52*tapTree.s,vx:(Math.random()-.5)*90,vy:-50-Math.random()*70,life:0.9,c:k<4?M.fruitColor:M.leafA[0]}); return; }
-  if(inWater(p.x,p.y,0)){ for(let k=0;k<14;k++){ const a=k/14*Math.PI*2; sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*40,vy:Math.sin(a)*20,life:1,c:'rgba(255,255,255,.75)'}); } return; }
+  if(inWater(p.x,p.y,0)){ for(let k=0;k<14;k++){ const a=k/14*Math.PI*2; sparks.push({x:p.x,y:p.y,vx:Math.cos(a)*40,vy:Math.sin(a)*20,life:1,c:'rgba(255,255,255,.75)'}); } ripples.push({x:p.x,y:p.y,t:0}); }
   target = {...p, t: 0}; dragging = true;
 });
 cv.addEventListener('pointermove', e => { if (dragging && target) Object.assign(target, toWorld(e)); });
@@ -342,7 +345,7 @@ function roarFX(a){
   return fx = {bus, noise};
 }
 function roar(){
-  dino.roar = 1; playerBaby.roar = .6; vibrate([40,20,40]);
+  dino.roar = 1; playerBaby.roar = .6; hatchlings.forEach(h=>h.roar=.6); vibrate([40,20,40]);
   const a = audio(); if (!a) return;
   if (a.currentTime - lastRoar < .4) return; lastRoar = a.currentTime;
   playRoar(SPECIES[speciesName].pitch, 1);
@@ -441,6 +444,17 @@ function triggerPower(){
     for(let k=0;k<30;k++) sparks.push({x:dino.x+(Math.random()-.5)*180,y:dino.y+5,vx:(Math.random()-.5)*100,vy:-50-Math.random()*60,life:.8,c:SKINS[skinName].rockA||'#c080e8'});
     if(a&&!muted){const o=a.createOscillator(),g=a.createGain();o.type='sawtooth';o.frequency.setValueAtTime(45,a.currentTime);o.frequency.exponentialRampToValueAtTime(20,a.currentTime+.4);g.gain.setValueAtTime(.22,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.7);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.8);}
   } else { burst(SKINS[skinName].G,25); }
+}
+function bloop(){
+  if(muted) return; const a=audio(); if(!a) return;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(700,a.currentTime); o.frequency.exponentialRampToValueAtTime(180,a.currentTime+.18);
+  g.gain.setValueAtTime(.18,a.currentTime); g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.22);
+  o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+.25);
+}
+function splash(x,y,n){
+  for(let k=0;k<n;k++) sparks.push({x:x+(Math.random()-.5)*30,y:y-4,vx:(Math.random()-.5)*160,vy:-110-Math.random()*140,life:.7,c:'rgba(170,220,255,.9)'});
+  ripples.push({x,y,t:0});
 }
 function footstep(pitch=1){
   if(muted) return; const a=audio(); if(!a) return;
@@ -593,6 +607,15 @@ function drawEgg(e,t){
   ctx.restore();
   const tw = (Math.sin(t*4+e.w)+1)/2;
   ctx.fillStyle=`rgba(255,255,255,${.4+tw*.6})`; ctx.font='16px sans-serif'; ctx.fillText('✦', e.x+12, e.y-36-tw*4);
+}
+function drawHatch(h){
+  const wob=Math.sin(h.t*40)*.28*Math.min(1,h.t*2);
+  ell(h.x,h.y+2,16,5,'rgba(0,0,0,.2)');
+  ctx.save(); ctx.translate(h.x,h.y); ctx.rotate(wob);
+  ell(0,-18,14,19,'#fff6e0');
+  ctx.fillStyle=h.c; [[-5,-24,4],[6,-14,3.5],[-3,-8,3],[5,-28,2.5]].forEach(([x,y,r])=>{ ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill(); });
+  if(h.t>.45){ ctx.strokeStyle='#7a5a30'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.moveTo(-13,-20); ctx.lineTo(-7,-15); ctx.lineTo(-2,-22); ctx.lineTo(3,-15); ctx.lineTo(8,-21); ctx.lineTo(13,-17); ctx.stroke(); }
+  ctx.restore();
 }
 // ---------- dinosaurs ----------
 const SPECIES = {
@@ -809,6 +832,10 @@ function drawDino(d,t){
   ctx.lineCap='round';
   BODY[kind](d.skin || SKINS[skinName], bob, leg, wag, d, t);
   ctx.restore();
+  // wading: water covers the feet
+  if(!d.preview && kind!=='ptero' && inWater(d.x,d.y,0)){
+    ctx.globalAlpha=.8; ell(d.x, d.y+1, (kind==='rex'?36:46)*z, 10*z, MAPS[mapName].pondWaterB); ctx.globalAlpha=1;
+    ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(d.x,d.y+1,(kind==='rex'?36:46)*z,10*z,0,Math.PI,Math.PI*2); ctx.stroke(); }
   }
 function drawRoarText(d){
   const kind = d.kind || speciesName;
@@ -850,6 +877,7 @@ function drawFly(f,t){
 }
 
 // ---------- species picker ----------
+const PICK = {rex:[1.25,96],trike:[1.2,80],steg:[1.25,98],brachi:[.98,88],unicorn:[1.1,80],para:[1.15,86],anky:[1.1,90],ptero:[1.1,86]}; // preview scale, x-offset
 const spWrap = document.getElementById('species');
 spWrap.innerHTML = Object.keys(SPECIES).map(k => `<button class="sp" data-sp="${k}" aria-label="${SPECIES[k].label}"><canvas width="168" height="160"></canvas></button>`).join('');
 function drawPicker(){
@@ -857,14 +885,31 @@ function drawPicker(){
     const k = btn.dataset.sp; btn.classList.toggle('sel', k===speciesName);
     const pc = btn.querySelector('canvas'), main = ctx;
     ctx = pc.getContext('2d'); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,168,160);
-    const [s,ox] = {rex:[1.25,96],trike:[1.2,80],steg:[1.25,98],brachi:[.98,88],unicorn:[1.1,80],para:[1.15,86],anky:[1.1,90],ptero:[1.1,86]}[k]; ctx.setTransform(s,0,0,s,ox,150);
+    const [s,ox] = PICK[k]; ctx.setTransform(s,0,0,s,ox,150);
     drawDino({kind:k,x:0,y:0,dir:1,walk:0,moving:false,roar:0,blink:0,preview:true}, 0);
     ctx = main;
   });
 }
 spWrap.addEventListener('click', e => { const b = e.target.closest('[data-sp]'); if (!b) return;
   speciesName = b.dataset.sp; try { localStorage.setItem('dinoSpecies', speciesName); } catch(e){} drawPicker(); roar(); });
-drawMapPicker(); drawSwatches(); drawPicker();
+// ---------- sticker book: one sticker per species met (kept between visits) ----------
+let met={}; try{ met=JSON.parse(localStorage.getItem('dinoStickers')||'{}')||{}; }catch(e){}
+const stWrap=document.getElementById('stickers');
+stWrap.innerHTML=Object.keys(SPECIES).map(k=>`<canvas class="stk" data-st="${k}" width="96" height="92" aria-label="${SPECIES[k].label}"></canvas>`).join('');
+function drawStickers(){
+  stWrap.querySelectorAll('.stk').forEach((c,i)=>{ const k=c.dataset.st, main=ctx; c.classList.toggle('off',!met[k]);
+    ctx=c.getContext('2d'); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,96,92);
+    const [s,ox]=PICK[k], f=96/168; ctx.setTransform(s*f,0,0,s*f,ox*f,86);
+    drawDino({kind:k,x:0,y:0,dir:1,walk:0,moving:false,roar:0,blink:0,preview:true,skin:HATCH_SKINS[i%HATCH_SKINS.length]},0);
+    ctx=main; });
+}
+function meet(kind,x,y){
+  if(met[kind]) return;
+  met[kind]=true; try{ localStorage.setItem('dinoStickers',JSON.stringify(met)); }catch(e){}
+  drawStickers(); chime();
+  for(let k=0;k<6;k++) sparks.push({star:true,x:x+(Math.random()-.5)*50,y:y-70-k*10,vx:(Math.random()-.5)*40,vy:-60,life:1.5});
+}
+drawMapPicker(); drawSwatches(); drawPicker(); drawStickers();
 
 // ---------- friendly dinos ----------
 const npcs = [];
@@ -888,8 +933,15 @@ const npcs = [];
       npcs.push({...n, baby:true, parent:n, s:.55, x:x-50-b*35, y:y+25+b*15, home:null, goal:null, off:{x:-55-b*40, y:20+b*25}});
   }
 })();
+// parade mode: a grown-up dino you walk up to (or tap) joins the line behind you
+function recruit(n){
+  if(playMode!=='parade' || !playing || n.baby || n.npc_inParade || paradeMembers.length>=8) return false;
+  n.npc_inParade=true; n.goal=null; paradeMembers.push(n); npcRoar(n);
+  for(let k=0;k<14;k++) sparks.push({heart:true,x:n.x+(Math.random()-.5)*40,y:n.y-50,vx:(Math.random()-.5)*60,vy:-80,life:1.4});
+  drawSlots(); return true;
+}
 function npcRoar(n){
-  n.roar = 1; n.cool = Math.max(n.cool, 1.5); n.nameTimer = 2.5; n.sleepTimer = 0;
+  n.roar = 1; n.cool = Math.max(n.cool, 1.5); n.nameTimer = 2.5; n.sleepTimer = 0; if(playing) meet(n.kind,n.x,n.y);
   for (let k=0;k<3;k++) sparks.push({heart:true, x:n.x+(Math.random()-.5)*40, y:n.y-70*n.s-k*12, vx:(Math.random()-.5)*30, vy:-60, life:1.2});
   const vol = Math.max(.2, Math.min(.75, 1 - Math.hypot(n.x-dino.x,n.y-dino.y)/800));
   playRoar(SPECIES[n.kind].pitch * (n.baby ? 1.7 : 1), vol * (n.baby ? .7 : 1));
@@ -912,9 +964,12 @@ function updateNPC(n, dt){
     const gx = n.parent.x + n.off.x*n.parent.dir, gy = n.parent.y + n.off.y;
     if (Math.hypot(gx-n.x, gy-n.y) > 25) moved = stepToward(n, gx, gy, 95, dt);
     else if (dP < 200) n.dir = dino.x > n.x ? 1 : -1;
+  } else if (n.npc_inParade){                 // the parade code moves this one
+    moved = n.moving;
   } else if (dP < 170){                       // stop and say hello
     n.dir = dino.x > n.x ? 1 : -1; n.goal = null;
-    if (!n.greeted && playing){ n.greeted = true; n.reply = .3; }
+    if (!n.greeted && playing){ n.greeted = true; n.reply = .3; meet(n.kind,n.x,n.y); }
+    recruit(n);
   } else {
     if (dP > 450) n.greeted = false;
     if (n.goal){ moved = stepToward(n, n.goal.x, n.goal.y, 55, dt); if (!moved) { n.goal = null; n.wait = 1 + Math.random()*3; } }
@@ -931,7 +986,7 @@ const eggLabel = document.getElementById('eggs');
 let found = 0, playing = false;
 const overlay = document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovText=document.getElementById('ovText'), ovBtn=document.getElementById('ovBtn'), menuBtn=document.getElementById('menu-btn');
 function drawSlots(){ if(playMode==='parade'){ eggLabel.innerHTML=Array.from({length:8},(_,i)=>`<span class="${i<paradeMembers.length?'got':''}">🦕</span>`).join(''); } else { eggLabel.innerHTML=Array.from({length:EGG_COUNT},(_,i)=>`<span class="${i<found?'got':''}">🥚</span>`).join(''); } }
-function newGame(){ if(playMode==='eggs') placeEggs(); else eggs=[]; placeFoods(); found=0; paradeMembers=[]; playerTrail=[]; paradeComplete=false; npcs.forEach(n=>n.npc_inParade=false); drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; playerBaby.x=START.x-70; playerBaby.y=START.y+20; }
+function newGame(){ if(playMode==='eggs') placeEggs(); else eggs=[]; placeFoods(); found=0; paradeMembers=[]; playerTrail=[]; paradeComplete=false; npcs.forEach(n=>n.npc_inParade=false); drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; playerBaby.x=START.x-70; playerBaby.y=START.y+20; hatches.length=0; hatchlings.length=0; ripples.length=0; }
 const modeWrap=document.getElementById('modes');
 modeWrap.addEventListener('click',e=>{ const b=e.target.closest('[data-mode]'); if(!b) return; playMode=b.dataset.mode; modeWrap.querySelectorAll('.mode-btn').forEach(m=>m.classList.toggle('sel',m.dataset.mode===playMode)); drawSlots(); });
 const muteBtn=document.getElementById('mute-btn');
@@ -941,7 +996,7 @@ const totalScoreEl=document.getElementById('total-score');
 function updateTotalScore(){ totalScoreEl.textContent=totalEggs>0?`🥚 × ${totalEggs}`:''; }
 updateTotalScore();
 ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); muteBtn.classList.add('vis'); playMapMusic(); });
-menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); muteBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
+menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); muteBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent=''; });
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (playing && overlay.hidden) playMapMusic(); });
 newGame();
 
@@ -960,10 +1015,11 @@ function step(now){
   if (len){ dx/=len; dy/=len;
     // steer around trees/rocks/water: try straight, then turn a bit more each time
     const base=Math.atan2(dy,dx), step=SPEED*dt; let moved=false;
-    const sw=speciesName==='ptero', stuck=blocked(dino.x,dino.y,sw); // if already stuck (e.g. in a pond), let it walk out
+    // walkers can wade into the shallow edge of ponds (only the deep middle blocks them); ptero flies over
+    const sw=speciesName==='ptero', pb=(x,y)=>blocked(x,y,true)||(!sw&&inWater(x,y,-45)), stuck=pb(dino.x,dino.y);
     for (const off of [0,.45,-.45,.9,-.9,1.35,-1.35]){
       const a=base+off, nx=dino.x+Math.cos(a)*step, ny=dino.y+Math.sin(a)*step;
-      if (stuck || !blocked(nx,ny,sw)){ dino.x=nx; dino.y=ny; moved=true; if (Math.abs(Math.cos(a))>.2) dino.dir=Math.cos(a)>0?1:-1; break; }
+      if (stuck || !pb(nx,ny)){ dino.x=nx; dino.y=ny; moved=true; if (Math.abs(Math.cos(a))>.2) dino.dir=Math.cos(a)>0?1:-1; break; }
     }
     if (moved){ dino.moving=true; dino.walk += dt*12; if (target) target.t += dt; }
     else if (target && !dragging) target=null;
@@ -991,12 +1047,13 @@ function step(now){
       if(tgt){ const dx=tgt.x-n.x,dy=tgt.y-n.y,d=Math.hypot(dx,dy); if(d>10){ const sp=Math.min(d,SPEED*.9*dt); n.x+=dx/d*sp; n.y+=dy/d*sp; n.moving=true; n.walk+=dt*10; if(Math.abs(dx/d)>.2) n.dir=dx>0?1:-1; }else n.moving=false; } });
     if(paradeMembers.length>=8&&!paradeComplete){ paradeComplete=true;
       for(let k=0;k<120;k++) sparks.push({x:dino.x+(Math.random()-.5)*80,y:dino.y-50,vx:(Math.random()-.5)*700,vy:-100-Math.random()*700,life:2.2,c:['#ff9ecb','#8fd3ff','#ffd56b','#c7a0ff','#ff6b6b'][k%5]});
-      roar(); setTimeout(()=>{ovTitle.textContent='🎺 Parade!'; ovText.textContent='🦕🦕🦕🦕🦕🦕🦕🦕'; overlay.hidden=false; menuBtn.classList.remove('vis'); muteBtn.classList.remove('vis');},1400); } }
+      roar(); setTimeout(()=>{ovTitle.textContent='🎺 Parade!'; ovText.textContent='🎉 🦕 🎉'; overlay.hidden=false; menuBtn.classList.remove('vis'); muteBtn.classList.remove('vis');},1400); } }
 
   // eggs
   for (let i=eggs.length-1;i>=0;i--){ const e=eggs[i];
     if (Math.hypot(e.x-dino.x, e.y-dino.y) < 50){
       const nestId=e.nestId; eggs.splice(i,1); found++; chime(); playerBaby.roar=1;
+      hatches.push({type:'hatch',x:e.x,y:e.y,c:e.c,t:0});
       totalEggs++; try{localStorage.setItem('totalEggs',totalEggs);}catch(e){} updateTotalScore();
       if(nestId!==undefined&&!eggs.some(eg=>eg.nestId===nestId)){ const n=NESTS[nestId]; for(let k=0;k<40;k++) sparks.push({x:n.x+(Math.random()-.5)*55,y:n.y+(Math.random()-.5)*40,vx:(Math.random()-.5)*260,vy:-130-Math.random()*220,life:1.7,c:['#ffd56b','#ff9ecb','#8fd3ff','#c7a0ff'][k%4]}); }
       npcs.forEach(n=>{ if(!n.baby&&Math.hypot(n.x-e.x,n.y-e.y)<420){ n.roar=.7; n.sleepTimer=0; for(let k=0;k<3;k++) sparks.push({heart:true,x:n.x+(Math.random()-.5)*40,y:n.y-60*n.s-k*10,vx:(Math.random()-.5)*30,vy:-55,life:1.1}); } });
@@ -1018,10 +1075,26 @@ function step(now){
     if(Math.hypot(dino.x-f.x,dino.y-f.y)<42){ f.eaten=true; f.respawnIn=9+Math.random()*6; munch(); vibrate([20]);
       for(let k=0;k<10;k++) sparks.push({x:f.x+(Math.random()-.5)*20,y:f.y-14,vx:(Math.random()-.5)*70,vy:-55-Math.random()*50,life:.8,c:['#ffff80','#ff80c0','#80ffff'][k%3]}); }
   });
+  // eggs crack open, then a baby pops out and joins the line behind you
+  for(let i=hatches.length-1;i>=0;i--){ const h=hatches[i]; h.t+=dt;
+    if(h.t>1){ hatches.splice(i,1);
+      const kinds=Object.keys(SPECIES), kind=kinds[Math.random()*kinds.length|0];
+      hatchlings.push({type:'dino',kind,skin:HATCH_SKINS[Math.random()*HATCH_SKINS.length|0],x:h.x,y:h.y,dir:dino.dir,walk:0,moving:false,roar:1,blink:0,s:.4});
+      for(let k=0;k<16;k++) sparks.push({x:h.x,y:h.y-20,vx:(Math.random()-.5)*160,vy:-60-Math.random()*120,life:.9,c:'#fff6e0'});
+      playRoar(SPECIES[kind].pitch*2,.35); meet(kind,h.x,h.y); } }
+  hatchlings.forEach((h,i)=>{ const lead=i?hatchlings[i-1]:playerBaby, tx=lead.x-lead.dir*(i?34:40), ty=lead.y+6, hx=tx-h.x, hy=ty-h.y, hd=Math.hypot(hx,hy);
+    if(hd>12){ const hs=Math.min(hd,SPEED*.85*dt); h.x+=hx/hd*hs; h.y+=hy/hd*hs; h.moving=true; h.walk+=dt*16; if(Math.abs(hx)>2) h.dir=hx>0?1:-1; } else h.moving=false;
+    h.roar=Math.max(0,h.roar-dt*.75); h.blink-=dt; if(h.blink<-3-Math.random()*4) h.blink=.12; });
+  // wading and splashing in ponds
+  const wet=speciesName!=='ptero'&&inWater(dino.x,dino.y,0);
+  if(wet&&!dino.wet){ splash(dino.x,dino.y,18); bloop(); vibrate([30]); }
+  if(wet&&dino.moving&&Math.random()<dt*8) splash(dino.x,dino.y,4);
+  dino.wet=wet;
+  for(let i=ripples.length-1;i>=0;i--){ ripples[i].t+=dt; if(ripples[i].t>1) ripples.splice(i,1); }
   npcs.forEach(n => updateNPC(n, dt));
   flies.forEach(f => { f.a += dt*(.6+Math.sin(t+f.x)*.4); f.x += Math.cos(f.a)*40*dt; f.y += Math.sin(f.a*1.3)*30*dt;
     f.x=(f.x+W)%W; f.y=(f.y+H)%H; });
-  for (let i=sparks.length-1;i>=0;i--){ const s=sparks[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=(s.heart?-30:500)*dt; s.life-=dt*(s.heart?.8:1.4); if (s.life<=0) sparks.splice(i,1); }
+  for (let i=sparks.length-1;i>=0;i--){ const s=sparks[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; const fl=s.heart||s.star; s.vy+=(fl?-30:500)*dt; s.life-=dt*(fl?.8:1.4); if (s.life<=0) sparks.splice(i,1); }
   volcanoes.forEach(v=>{ if(v.erupting>0) v.erupting=Math.max(0,v.erupting-dt); });
   updateAmbients(dt,t);
 
@@ -1046,16 +1119,19 @@ function step(now){
   if(playMode==='eggs') NESTS.forEach((n,i)=>{ const hasEggs=eggs.some(e=>e.nestId===i); ctx.strokeStyle=hasEggs?'rgba(255,220,80,.5)':'rgba(255,220,80,.18)'; ctx.lineWidth=3; ctx.setLineDash([10,8]); ctx.beginPath(); ctx.ellipse(n.x,n.y,95,65,0,0,7); ctx.stroke(); ctx.setLineDash([]); });
   // depth-sorted objects in view
   const pad=140, vis = o => o.x>camX-pad && o.x<camX+vw+pad && o.y>camY-pad && o.y<camY+vh+pad*1.5;
-  const list = [...trees,...rocks,...bushes,...eggs,...foods,...npcs,...volcanoes,playerBaby,dino].filter(o => o.type==='volcano' ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
+  ripples.forEach(r=>{ ctx.globalAlpha=1-r.t; ctx.strokeStyle='rgba(255,255,255,.8)'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.ellipse(r.x,r.y,12+r.t*55,5+r.t*22,0,0,7); ctx.stroke(); }); ctx.globalAlpha=1;
+  const list = [...trees,...rocks,...bushes,...eggs,...hatches,...foods,...npcs,...volcanoes,...hatchlings,playerBaby,dino].filter(o => o.type==='volcano' ? Math.abs(o.x-camX-vw/2) < vw/2+260 && o.y>camY-60 && o.y<camY+vh+320 : vis(o)).sort((a,b)=>a.y-b.y);
   for (const o of list){
     if (o.type==='tree') drawTree(o); else if (o.type==='rock') drawRock(o);
-    else if (o.type==='bush') drawBush(o); else if (o.type==='egg') drawEgg(o,t); else if (o.type==='food') drawFood(o,t); else if (o.type==='volcano') drawVolcano(o,t); else drawDino(o,t);
+    else if (o.type==='bush') drawBush(o); else if (o.type==='egg') drawEgg(o,t); else if (o.type==='hatch') drawHatch(o); else if (o.type==='food') drawFood(o,t); else if (o.type==='volcano') drawVolcano(o,t); else drawDino(o,t);
   }
   if (target){ const r=14+Math.sin(t*8)*4; ctx.strokeStyle='rgba(255,255,255,.8)'; ctx.lineWidth=4;
     ctx.beginPath(); ctx.ellipse(target.x,target.y,r,r*.5,0,0,7); ctx.stroke(); }
   drawRoarText(dino);
   sparks.forEach(s => { ctx.globalAlpha=Math.min(1,s.life);
-    if (s.heart){ ctx.font='28px sans-serif'; ctx.textAlign='center'; ctx.fillText('💛',s.x,s.y); } else ell(s.x,s.y,4,4,s.c); }); ctx.globalAlpha=1;
+    if (s.heart){ ctx.font='28px sans-serif'; ctx.textAlign='center'; ctx.fillText('💛',s.x,s.y); }
+    else if (s.star){ ctx.font='30px sans-serif'; ctx.textAlign='center'; ctx.fillText('⭐',s.x,s.y); }
+    else ell(s.x,s.y,4,4,s.c); }); ctx.globalAlpha=1;
   flies.filter(vis).forEach(f => drawFly(f,t));
   npcs.filter(n=>n.sleepTimer>10&&vis(n)).forEach(n=>{
     const yb=n.y-SPECIES[n.kind].top*n.s-8;
