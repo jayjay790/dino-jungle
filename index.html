@@ -202,8 +202,9 @@ try { const sm=localStorage.getItem('dinoMap'); if(MAPS[sm]) mapName=sm; } catch
 // ---------- pre-rendered ground ----------
 const ground = document.createElement('canvas');
 function buildGround(){
-  const M=MAPS[mapName]; ground.width=W; ground.height=H;
-  const g=ground.getContext('2d');
+  // half resolution: keeps the canvas well under iOS Safari's size/memory limits
+  const M=MAPS[mapName]; ground.width=W/2; ground.height=H/2;
+  const g=ground.getContext('2d'); g.setTransform(.5,0,0,.5,0,0);
   g.fillStyle=M.groundFill; g.fillRect(0,0,W,H);
   for (let i=0;i<800;i++){ g.fillStyle=Math.random()<.5?M.blobA:M.blobB;
     g.beginPath(); g.arc(Math.random()*W,Math.random()*H,40+Math.random()*110,0,7); g.fill(); }
@@ -941,11 +942,12 @@ function updateTotalScore(){ totalScoreEl.textContent=totalEggs>0?`🥚 × ${tot
 updateTotalScore();
 ovBtn.addEventListener('click', () => { audio(); overlay.hidden=true; if (!playing || !eggs.length) newGame(); playing=true; menuBtn.classList.add('vis'); muteBtn.classList.add('vis'); playMapMusic(); });
 menuBtn.addEventListener('pointerdown', e => { e.preventDefault(); overlay.hidden=false; menuBtn.classList.remove('vis'); muteBtn.classList.remove('vis'); ovTitle.textContent='Dino Jungle'; ovText.textContent='🦖 🥚'; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopMusic(); else if (playing && overlay.hidden) playMapMusic(); });
 newGame();
 
 // ---------- loop ----------
 let last = performance.now();
-function frame(now){
+function step(now){
   const dt = Math.min(.05,(now-last)/1000); last=now; const t=now/1000;
 
   // move
@@ -958,10 +960,10 @@ function frame(now){
   if (len){ dx/=len; dy/=len;
     // steer around trees/rocks/water: try straight, then turn a bit more each time
     const base=Math.atan2(dy,dx), step=SPEED*dt; let moved=false;
-    const sw=speciesName==='ptero';
+    const sw=speciesName==='ptero', stuck=blocked(dino.x,dino.y,sw); // if already stuck (e.g. in a pond), let it walk out
     for (const off of [0,.45,-.45,.9,-.9,1.35,-1.35]){
       const a=base+off, nx=dino.x+Math.cos(a)*step, ny=dino.y+Math.sin(a)*step;
-      if (!blocked(nx,ny,sw)){ dino.x=nx; dino.y=ny; moved=true; if (Math.abs(Math.cos(a))>.2) dino.dir=Math.cos(a)>0?1:-1; break; }
+      if (stuck || !blocked(nx,ny,sw)){ dino.x=nx; dino.y=ny; moved=true; if (Math.abs(Math.cos(a))>.2) dino.dir=Math.cos(a)>0?1:-1; break; }
     }
     if (moved){ dino.moving=true; dino.walk += dt*12; if (target) target.t += dt; }
     else if (target && !dragging) target=null;
@@ -1032,7 +1034,7 @@ function frame(now){
   const dpr = cv._dpr;
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.fillStyle=MAPS[mapName].bg; ctx.fillRect(0,0,VW,VH);
   ctx.setTransform(dpr*Zf,0,0,dpr*Zf,(-camX+shX)*dpr*Zf,(-camY+shY)*dpr*Zf);
-  ctx.drawImage(ground,0,0);
+  ctx.drawImage(ground,0,0,W,H);
 
   // water shimmer
   ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=2;
@@ -1075,6 +1077,17 @@ function frame(now){
   }
   ctx.setTransform(dpr,0,0,dpr,0,0);
   drawAmbients(t);
+}
+// never let one bad frame stop the game; show the first error small in a corner for the grown-ups
+let errShown=false;
+function frame(now){
+  try { step(now); }
+  catch(err){
+    ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha=1; try{ ctx.setLineDash([]); }catch(_){}
+    if(!errShown){ errShown=true; const d=document.createElement('div');
+      d.style.cssText='position:fixed;left:8px;bottom:8px;max-width:70vw;font:11px monospace;background:rgba(0,0,0,.7);color:#fff;padding:6px;border-radius:6px;z-index:9;pointer-events:none';
+      d.textContent=String((err&&err.stack)||err).slice(0,300); document.body.appendChild(d); }
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
