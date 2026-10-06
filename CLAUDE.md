@@ -1,7 +1,7 @@
 # Dino Jungle
 
 A dinosaur exploring game for a 3-year-old, installed as a home-screen app on iPhone/iPad.
-Hosted on GitHub Pages from the `main` branch; pushing to `main` publishes it.
+Hosted on GitHub Pages from the `master` branch; pushing to `master` publishes it.
 
 ## Files
 - `index.html` – the whole game (HTML, CSS and JavaScript in one file)
