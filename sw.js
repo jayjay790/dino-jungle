@@ -1,5 +1,5 @@
 // Offline support. Bump VERSION whenever you change any file.
-const VERSION = 'v23';
+const VERSION = 'v24';
 const CACHE = 'dino-jungle-' + VERSION;
 const FILES = ['./', 'index.html', 'manifest.webmanifest',
   'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png'];
