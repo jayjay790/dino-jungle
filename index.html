@@ -291,7 +291,8 @@ addEventListener('keydown', e => { if (keyMap[e.code]){ held[keyMap[e.code]]=1; 
 addEventListener('keyup', e => { if (keyMap[e.code]) held[keyMap[e.code]]=0; });
 // tap or drag anywhere: dino walks there; tap the dino to roar
 let target = null, dragging = false, camX = 0, camY = 0;
-const toWorld = e => ({x: e.clientX / Z + camX, y: e.clientY / Z + camY});
+let Zcam = Z; // updated each frame to match rendered zoom
+const toWorld = e => ({x: e.clientX / Zcam + camX, y: e.clientY / Zcam + camY});
 cv.addEventListener('pointerdown', e => {
   e.preventDefault(); if (!playing) return; audio();
   const p = toWorld(e);
@@ -485,7 +486,7 @@ function playMapMusic(){
 const ambients=[];
 function updateAmbients(dt,t){
   const wi=Math.min(1,weatherActive/4);
-  if(weatherActive>0){
+  if(weatherActive>0&&ambients.length<180){
     if(mapName==='jungle') for(let i=0;i<4;i++){if(Math.random()<dt*55*wi) ambients.push({type:'rain',x:Math.random()*VW,y:-5,vx:30,vy:520+Math.random()*180,life:.3});}
     else if(mapName==='ice') for(let i=0;i<3;i++){if(Math.random()<dt*35*wi) ambients.push({type:'snow',x:Math.random()*VW,y:-12,vx:(Math.random()-.5)*40-20,vy:55+Math.random()*40,r:2+Math.random()*3,life:.9});}
     else if(mapName==='candy'){if(Math.random()<dt*22*wi) ambients.push({type:'star',x:Math.random()*VW,y:Math.random()*VH*.4,vx:(Math.random()-.5)*30,vy:25+Math.random()*30,life:1.4,c:['#ff80c0','#ffee60','#80ffff','#c080ff','#fff'][Math.random()*5|0]});}
@@ -929,7 +930,7 @@ const eggLabel = document.getElementById('eggs');
 let found = 0, playing = false;
 const overlay = document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovText=document.getElementById('ovText'), ovBtn=document.getElementById('ovBtn'), menuBtn=document.getElementById('menu-btn');
 function drawSlots(){ if(playMode==='parade'){ eggLabel.innerHTML=Array.from({length:8},(_,i)=>`<span class="${i<paradeMembers.length?'got':''}">🦕</span>`).join(''); } else { eggLabel.innerHTML=Array.from({length:EGG_COUNT},(_,i)=>`<span class="${i<found?'got':''}">🥚</span>`).join(''); } }
-function newGame(){ if(playMode==='eggs'){placeEggs();} eggs=[]; placeFoods(); found=0; paradeMembers=[]; playerTrail=[]; paradeComplete=false; npcs.forEach(n=>n.npc_inParade=false); drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; playerBaby.x=START.x-70; playerBaby.y=START.y+20; }
+function newGame(){ if(playMode==='eggs') placeEggs(); else eggs=[]; placeFoods(); found=0; paradeMembers=[]; playerTrail=[]; paradeComplete=false; npcs.forEach(n=>n.npc_inParade=false); drawSlots(); dino.x=START.x; dino.y=START.y; dino.s=1; dino.celebrate=0; target=null; playerBaby.x=START.x-70; playerBaby.y=START.y+20; }
 const modeWrap=document.getElementById('modes');
 modeWrap.addEventListener('click',e=>{ const b=e.target.closest('[data-mode]'); if(!b) return; playMode=b.dataset.mode; modeWrap.querySelectorAll('.mode-btn').forEach(m=>m.classList.toggle('sel',m.dataset.mode===playMode)); drawSlots(); });
 const muteBtn=document.getElementById('mute-btn');
@@ -1023,7 +1024,7 @@ function frame(now){
   updateAmbients(dt,t);
 
   // camera
-  const Zf=Z*(1-zoomPulse*.28);
+  const Zf=Z*(1-zoomPulse*.28); Zcam=Zf;
   const shX=shakeTimer>0?(Math.random()-.5)*shakeAmt:0, shY=shakeTimer>0?(Math.random()-.5)*shakeAmt*.5:0;
   const vw=VW/Zf, vh=VH/Zf;
   camX = vw>=W ? (W-vw)/2 : Math.max(0,Math.min(W-vw, dino.x-vw/2));
